@@ -1,0 +1,31 @@
+<launch>
+
+  <arg name="model" default="phoenix"/>
+  <arg name="child_frame_id" default="$(arg model)/base_link"/>
+  <arg name="publish_tf" default="true"/>
+  <arg name="gps_fps" default="20"/>
+  <arg name="output" default="screen"/>
+
+  <node pkg="gps_imu" type="gpsImu_node" name="gpsimuFilter"
+    output="$(arg output)" ns="phoenix">
+    <param name="child_frame_id" type="string" value="$(arg child_frame_id)"/>
+    <param name="publish_tf" type="bool" value="$(arg publish_tf)"/>
+    <param name="gps_fps" type="int" value="$(arg gps_fps)"/>
+    <param name="quadPoseTopic" type="string" value="selfpub"/>
+    <param name="quadName" type="string" value="$(arg model)"/>
+    <param name="rtktopic" type="string" value="SingleBaselineRTK"/>
+    <param name="a2dtopic" type="string" value="Attitude2D"/>
+    <param name="posePubTopic" type="string" value="selfpub"/>
+    <param name="maxThrust" value="16.4808"/>
+
+    <param name="minimumTestStat" value="5"/> <!--do not process measurements with worse teststat-->
+    <param name="arenaCenterX" value="-742043.55"/> <!--ECEF-->
+    <param name="arenaCenterY" value="-5462198.63"/>
+    <param name="arenaCenterZ" value="3198003.982"/> 
+    <!--set these equal to 0, run gps_kf, monitor output, then set these parameters equal to the errors-->
+    <param name="arenaCenterX_ENU" value="-0.548"/>  <!-- -0.553-->
+    <param name="arenaCenterY_ENU" value="-0.568"/>  <!-- -0.538-->
+    <param name="arenaCenterZ_ENU" value="5.701"/>   <!--5.720-->
+  </node>
+
+</launch>
