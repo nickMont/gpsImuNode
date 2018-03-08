@@ -85,6 +85,9 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   ros::param::get(quadName + "/minimumTestStat",minTestStat);
   ros::param::get(quadName + "/maxThrust",tmax);
 
+  Qimu<<1e-3,1e-3,1e-3,1e-2,1e-2,1e-2;
+  Rk<<1e-1, 1e-1, 1e-1, 2.5*1e-2, 2.5*1e-2, 2.5*1e-2;
+
   one = 1ul;
 
   //Get additional parameters for the kalkman filter
@@ -105,11 +108,21 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   Rwrw << cos(thetaWRW), -1*sin(thetaWRW), 0,
           sin(thetaWRW), cos(thetaWRW), 0,
           0, 0, 1;
+  Pimu=Eigen::MatrixXd::Identity(15,15);
+  R_G2wrw=Rwrw*Recef2enu;
+
+  //THIS SHOULD BE INITIALIZED IN GPSCALLBACKS
+  rRefImu<<0,0,0; //location of rI_0 for imu
 
   lastRTKtime=0;
   lastA2Dtime=0;
   //internalQuat.resize(4);
   internalSeq=0;
+
+  //Secondary to primary vector in body frame.  TODO: measure
+  l_s2p<<-0.24,0,0;
+  //
+  l_imu<<-0.24,0,-0.10;
 
 
   // Initialize publishers and subscribers
@@ -121,8 +134,8 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
 //  internalPosePub_ = nh.advertise<geometry_msgs::PoseStamped>(posePubTopic,10);
   rtkSub_ = nh.subscribe("SingleBaselineRTK",10,&gpsImuNode::singleBaselineRTKCallback,
                             this, ros::TransportHints().tcpNoDelay());
- /* a2dSub_ = nh.subscribe("Attitude2D",10,&gpsImuNode::attitude2DCallback,
-                            this, ros::TransportHints().tcpNoDelay());*/
+  a2dSub_ = nh.subscribe("Attitude2D",10,&gpsImuNode::attitude2DCallback,
+                            this, ros::TransportHints().tcpNoDelay());
   imuSub_ = nh.subscribe("IMU",10, &gpsImuNode::imuDataCallback,
                             this, ros::TransportHints().tcpNoDelay());
   imuConfigSub_ = nh.subscribe("IMUConfig",10, &gpsImuNode::imuConfigCallback,
@@ -166,7 +179,7 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   static bool isCalibrated=false;
   static int counter=-1;
   static Eigen::Matrix<double,100,3> imuAStore, imuGStore;
-  static float tLast=0;
+  static float tLastImu=0;
   static Eigen::Vector3d ba0=Eigen::Vector3d(0,0,0);
   static Eigen::Vector3d bg0=Eigen::Vector3d(0,0,0);
   static const int SF_TL = 24;
@@ -222,7 +235,8 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   float fractionOfSecond_ = secondsWithinFractionalInterval -
     nWholeSecondsWithinFractionalInterval;
   float thisTime=week_*SEC_PER_WEEK+secondsOfWeek_+fractionOfSecond_;
-  dt = thisTime-tLast;
+  //NOTE: tLastProcessed is the last gps OR imu measurement processed whereas tLastImu is JUST imu
+  dt = thisTime-tLastImu;
 
   if(dt<=1e-8)
   {
@@ -230,7 +244,7 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   }
 
   //Only update time if you accept the data
-  tLast=thisTime;
+  tLastImu=thisTime;
 
   counter++;
 
@@ -258,10 +272,14 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   //Run CF if calibrated
   if(isCalibrated)
   {
-    Eigen::Matrix<double,15,15> Fmat_local = getFmatrixCF(dt,imuAccelMeas,imuAttRateMeas,RBI);
+    double dtLastProc = thisTime - tLastProcessed;
+    Eigen::Matrix<double,15,15> Fmat_local = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI);
     xState=Fmat_local*xState;
-    RBI=RBI*( Eigen::Matrix3d::Identity()+hatmat(xState.middleRows(6,3)) );
+    Fimu=Fmat_local*Fimu;
+    RBI=updateRBIfromGamma(RBI, xState.middleRows(6,3));
     xState.middleRows(6,3)=Eigen::Vector3d::Zero();
+
+    //publish here?
 
   }else if(hasRBI){
 /*    imuAStore(counter,0)=imuAccelMeas(0);
@@ -287,49 +305,16 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
 }*/
 
 
-void gpsImuNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBaselineRTK::ConstPtr &msg)
+/*void gpsImuNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBaselineRTK::ConstPtr &msg)
 {
 }
 
 void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::ConstPtr &msg)
 {
-  static int rCCalibCounter=0;
-  static int calibSamples=20;
 
-  //Ignore zero messages
-  if(msg->tSolution.week<=1)
-  {return;}
-
-  if(~hasRBI && msg->testStat>=100)
-  {
-    Eigen::Vector3d constrainedBaselineECEF(msg->rx,msg->ry,msg->rz);
-    Eigen::Vector3d constrainedBaselineENU = Recef2enu*constrainedBaselineECEF;
-    Eigen::Vector3d constrainedBaselineI = unit3(Rwrw*constrainedBaselineENU);
-    rCtildeCalib(rCCalibCounter%calibSamples,0)=constrainedBaselineI(0);
-    rCtildeCalib(rCCalibCounter%calibSamples,1)=constrainedBaselineI(1);
-    rCtildeCalib(rCCalibCounter%calibSamples,2)=constrainedBaselineI(2);
-    rBCalib(rCCalibCounter%calibSamples,0)=1;
-    rBCalib(rCCalibCounter%calibSamples,1)=0;
-    rBCalib(rCCalibCounter%calibSamples,2)=0;
-    //rCB=???
-    rCCalibCounter++;
-
-    if(rCCalibCounter>=calibSamples)
-    {
-      rCtildeCalib(calibSamples,0)=0; rBCalib(calibSamples,0)=0;
-      rCtildeCalib(calibSamples,1)=0; rBCalib(calibSamples,1)=0;
-      rCtildeCalib(calibSamples,2)=1; rBCalib(calibSamples,2)=1;
-      Eigen::MatrixXd weights;
-      weights.resize(calibSamples,1);
-      weights.topRows(calibSamples)=0.5*1/calibSamples*Eigen::MatrixXd::Ones(calibSamples,1);
-      weights(calibSamples)=0.5;
-      RBI=rotMatFromWahba(weights,rCtildeCalib,rBCalib);
-      hasRBI=true;
-    }
-  }
 
   //do A2D to localframe conversion
-}
+}*/
 
 
 void gpsImuNode::PublishTransform(const geometry_msgs::Pose &pose,

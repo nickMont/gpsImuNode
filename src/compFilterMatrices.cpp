@@ -4,38 +4,107 @@
 
 namespace gpsimu_odom
 {
+//CF propagation step
+void gpsImuNode::kfCFPropagate(const double dt0, const Eigen::Matrix<double,15,15> P0,
+    const Eigen::Matrix<double,15,1> x0, const Eigen::Matrix<double,15,15> F0,
+    const Eigen::Matrix3d RR, const Eigen::Matrix<double,6,6> Qk,
+    Eigen::Matrix<double,15,15> Pbar, Eigen::Matrix<double,15,1> xBar)
+{
+	Eigen::Matrix<double,15,6> gammak=getGammakmatrixCF(dt0,RR);
+	xBar = F0*x0;
+	Pbar = F0*P0*F0.transpose()+gammak*Qk*gammak.transpose();
+}
 
+
+//CF measurement step for two antennas
+void gpsImuNode::kfCFMeasure2(const Eigen::Matrix<double,15,1> xBar, const Eigen::Vector3d drI, const Eigen::Vector3d drS2P,
+    const Eigen::Matrix3d RR, const Eigen::Matrix<double,15,15> Pbar,
+    const Eigen::Vector3d Limu, const Eigen::Vector3d Ls2p, const Eigen::Matrix<double,6,6> Rbar,
+    Eigen::Matrix<double,15,15> Pkp1, Eigen::Matrix<double,15,1> xkp1)
+{
+	Eigen::Matrix<double,6,1> zk;
+	zk.topRows(3)=drI; zk.bottomRows(3)=drS2P;
+	Eigen::Matrix<double,6,15> Hk = getHkmatrixTwoAntennaCF(Limu,Ls2p,RR);
+	Eigen::Matrix<double,6,1> zMinusZbar = zk-Hk*xBar;
+	Eigen::Matrix<double,6,6> Sk = Rbar+Hk*Pbar*Hk.transpose();
+	Eigen::Matrix<double,15,6> Wk = Pbar*Hk.transpose()*Sk;
+	xkp1 = xBar + Wk*zMinusZbar;
+	Pkp1 = (Eigen::MatrixXd::Identity(15,15)-Wk*Hk)*Pbar*(Eigen::MatrixXd::Identity(15,15)-Wk*Hk).transpose()
+		+ Wk*Rbar*Wk.transpose();
+}
+
+
+//Runs the CF
+void gpsImuNode::runCF(double dt0)
+{
+	Eigen::Matrix<double,15,15> pbar0;
+	Eigen::Matrix<double,15,1>  xbar0;
+	//construct measurement deltas
+	internal_rImu = xState.topRows(3)+rRefImu;
+	Eigen::Vector3d drI = internal_rImu - internal_rI;
+	//run EKF
+	kfCFPropagate(dt0,Pimu,xState,Fimu,RBI,Qimu, pbar0,xbar0);
+	kfCFMeasure2(xbar0,drI,internal_rC, RBI, pbar0, l_imu, l_s2p, Rk, Pimu, xState);
+}
+
+
+//rotate by hatmat(gammavec) to new RBI
+Eigen::Matrix3d gpsImuNode::updateRBIfromGamma(const Eigen::Matrix3d R0, const Eigen::Vector3d gamma)
+{
+    return (Eigen::Matrix3d::Identity()+hatmat(gamma))*R0;
+}
+
+
+//Generates F matrix from imu data
 Eigen::Matrix<double,15,15> gpsImuNode::getFmatrixCF(const double dt, const Eigen::Vector3d fB,
-	const Eigen::Vector3d omegaB, const Eigen::Matrix3d RBI)
+	const Eigen::Vector3d omegaB, const Eigen::Matrix3d RR)
 {
 	//A is continuous time, Fk is discrete time
 	Eigen::Matrix<double,15,15> Ak = Eigen::MatrixXd::Zero(15,15);
-	Ak.block(3,0,3,3)=Eigen::Matrix3d::Identity();
-	Ak.block(3,6,3,3)=-RBI*hatmat(fB);
-	Ak.block(3,12,3,3)=RBI;
+	Ak.block(0,3,3,3)=Eigen::Matrix3d::Identity();
+	Ak.block(3,6,3,3)=-RR*hatmat(fB);
+	Ak.block(3,12,3,3)=RR;
 	Ak.block(6,6,3,3)=hatmat(omegaB);
+	Ak.block(6,9,3,3)=Eigen::Matrix3d::Identity();
 	return Eigen::Matrix<double,15,15>::Identity() + dt*Ak;
 }
 
-Eigen::Matrix<double,15,6> gpsImuNode::getGammakmatrixCF(const double dt, const Eigen::Matrix3d RBI)
+
+//Grabs noise matrix
+Eigen::Matrix<double,15,6> gpsImuNode::getGammakmatrixCF(const double dt, const Eigen::Matrix3d RR)
 {
 	Eigen::Matrix<double,15,6> Gammak = Eigen::Matrix<double,15,6>::Zero();
 	Eigen::Matrix3d eye3 = Eigen::Matrix3d::Identity();
 	Gammak.block(0,3,3,3)=dt*eye3;
-	Gammak.block(3,0,3,3)=dt*dt*0.5*RBI;
-	Gammak.block(6,0,3,3)=dt*RBI;
+	Gammak.block(3,0,3,3)=dt*dt*0.5*RR;
+	Gammak.block(6,0,3,3)=dt*RR;
 	Gammak.block(9,3,3,3)=eye3;
 	Gammak.block(12,0,3,3)=eye3;
 	return Gammak;
 }
 
-Eigen::Matrix<double,3,15> gpsImuNode::getHkmatrixCF(const Eigen::Vector3d Lab, const Eigen::Matrix3d RBI)
+
+//Gets measurement equation for one antenna
+Eigen::Matrix<double,3,15> gpsImuNode::getHkmatrixOneAntennaCF(const Eigen::Vector3d Lab, const Eigen::Matrix3d RR)
 {
 	Eigen::Matrix<double,3,15> Hk = Eigen::Matrix<double,3,15>::Zero();
 	Hk.block(0,0,3,3)=Eigen::Matrix3d::Identity();
-	Hk.block(6,0,3,3)=-RBI*hatmat(Lab);
+	Hk.block(0,6,3,3)=-RR*hatmat(Lab);
 	return Hk;
 }
+
+
+//Gets measurement equation for two antennas
+Eigen::Matrix<double,6,15> gpsImuNode::getHkmatrixTwoAntennaCF(const Eigen::Vector3d Limu,
+	const Eigen::Vector3d Ls2p, const Eigen::Matrix3d RR)
+{
+	Eigen::Matrix<double,6,15> Hk = Eigen::Matrix<double,6,15>::Zero();
+	Hk.block(0,0,3,3)=Eigen::Matrix3d::Identity();
+	Hk.block(0,6,3,3)=-RR*hatmat(Limu);
+	Hk.block(3,6,3,3)=-RR*hatmat(Ls2p);
+	return Hk;
+}
+
 
 //Cross product equivalent.  Named this way for consistency with nn_imu_dat
 Eigen::Matrix3d gpsImuNode::hatmat(const Eigen::Vector3d v1)
@@ -66,6 +135,7 @@ Eigen::Matrix3d gpsImuNode::rotMatFromWahba(const Eigen::VectorXd weights,
 	//M.asDiagonal(Eigen::Vector3d(1,1,U.determinant()*V.determinant()));
 	return U*M*(V.transpose());
 }
+
 
 Eigen::Vector3d gpsImuNode::unit3(const Eigen::Vector3d v1)
 {
