@@ -35,25 +35,27 @@ class gpsImuNode
   Eigen::Matrix3d hatmat(const Eigen::Vector3d v1);
   Eigen::Matrix3d rotMatFromEuler(Eigen::Vector3d ee);
   Eigen::Matrix3d rotMatFromQuat(Eigen::Quaterniond qq);
+  Eigen::Matrix3d rotMatFromWahba(const Eigen::VectorXd weights, const::Eigen::MatrixXd vI,
+    const::Eigen::MatrixXd vB);
+  Eigen::Vector3d unit3(const Eigen::Vector3d v1);
 
  private:
   void PublishTransform(const geometry_msgs::Pose &pose,
                         const std_msgs::Header &header,
                         const std::string &child_frame_id);
 
-  KalmanFilter kf_;
-  KalmanTW kfTW_;
-  //gnssimu gpsimu_;
-  KalmanFilter::State_t xCurr;
   ros::Publisher odom_pub_;
   ros::Publisher localOdom_pub_;
   ros::Publisher mocap_pub_;
-  ros::Publisher internalPosePub_; //publishes /Valkyrie/pose to itself
+  ros::Publisher internalPosePub_;
   std::string child_frame_id_;
   tf2_ros::TransformBroadcaster tf_broadcaster_;
   Eigen::Vector3d baseECEF_vector, baseENU_vector, WRW0_ecef, arenaRefCenter,
       internalPose, n_err, imuAccelMeas, imuAttRateMeas;
-  Eigen::Matrix3d Recef2enu;
+
+  Eigen::Matrix3d Recef2enu, Rwrw, RBI;
+
+  Eigen::Matrix<double,21,3> rCtildeCalib, rBCalib;
   Eigen::Matrix<double,15,1> xState;
   Eigen::Matrix<double,15,15> Fimu, Pimu;
   bool publish_tf_;
@@ -66,7 +68,7 @@ class gpsImuNode
   int centerFlag, internalSeq, sec_in_week;
   double lastRTKtime, lastA2Dtime, minTestStat, max_accel, throttleSetpoint, throttleMax,
       imuConfigAccel, imuConfigAttRate, tMeasOffset, pi;
-  bool validRTKtest, validA2Dtest, kfInit, hasAlreadyReceivedA2D, hasAlreadyReceivedRTK;
+  bool validRTKtest, validA2Dtest, kfInit, hasAlreadyReceivedA2D, hasAlreadyReceivedRTK, hasRBI;
 
   int32_t trefWeek, trefSecOfWeek;
   float trefFracSecs;

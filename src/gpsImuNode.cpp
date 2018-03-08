@@ -84,7 +84,6 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   ros::param::get(quadName + "/posePubTopic", posePubTopic);
   ros::param::get(quadName + "/minimumTestStat",minTestStat);
   ros::param::get(quadName + "/maxThrust",tmax);
-  throttleMax = tmax;
 
   one = 1ul;
 
@@ -95,36 +94,23 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   if(publish_tf_ && child_frame_id_.empty())
     throw std::runtime_error("gpsimu_odom: child_frame_id required for publishing tf");
 
-  // There should only be one gps_fps, so we read from nh
-  double gps_fps;
-  nh.param(quadName + "/gps_fps", gps_fps, 20.0);
-  ROS_ASSERT(gps_fps > 0.0);
-
   //should be a const but catkin doesn't like scoping it
   pi = std::atan(1.0)*4;
 
-         /*baseECEF_vector(0) = msg->rx+msg->rxRov; //NOTE: THIS SHOULD BE READ IN VIA .LAUNCH WHEN USING GLOBAL FRAME
-        baseECEF_vector(1) = msg->ry+msg->ryRov;
-        baseECEF_vector(2) = msg->rz+msg->rzRov;*/
   Recef2enu=ecef2enu_rotMatrix(baseECEF_vector);
-  //baseENU_vector=Recef2enu*baseECEF_vector;
+
+  //Account for WRW rotation wrt ENU
+  double thetaWRW;
+  thetaWRW = 6.2*pi/180; //angle of rooftop coordinate system WRT ENU
+  Rwrw << cos(thetaWRW), -1*sin(thetaWRW), 0,
+          sin(thetaWRW), cos(thetaWRW), 0,
+          0, 0, 1;
 
   lastRTKtime=0;
   lastA2Dtime=0;
   //internalQuat.resize(4);
   internalSeq=0;
-  sec_in_week = 604800;
-  kfInit=false; //KF will need to be initialized
-  throttleSetpoint = 9.81/throttleMax; //the floor is the throttle
-  quaternionSetpoint.x()=0; quaternionSetpoint.y()=0; quaternionSetpoint.z()=0; quaternionSetpoint.w()=1;
 
-  //verbose parameters
-  ROS_INFO("max_accel: %f", max_accel);
-  ROS_INFO("publish_tf_: %d", publish_tf_);
-  ROS_INFO("child_frame_id: %s", child_frame_id_.c_str());
-  ROS_INFO("ROS topic: %s", quadPoseTopic.c_str());
-  ROS_INFO("Node name: %s", quadName.c_str());
-  ROS_INFO("gps_fps: %f", gps_fps);
 
   // Initialize publishers and subscribers
   odom_pub_ = nh.advertise<nav_msgs::Odometry>("odom", 10); //MUST have a node namespace, ns="quadName", in launchfile
@@ -156,19 +142,6 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
 }
 
 
-//Get reference timing from A2D since it's the most reliable
-void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::ConstPtr &msg)
-{ 
-  /*
-  if(msg->tSolution.week > 1) //GPS week will always be >1 if messages are being sent
-  {
-    trefWeek = msg->tSolution.week;
-    trefSecOfWeek = msg->tSolution.secondsOfWeek;
-    trefFracSecs = msg->tSolution.fractionOfSecond;
-  }*/
-}
-
-
 void gpsImuNode::tOffCallback(const gbx_ros_bridge_msgs::ObservablesMeasurementTime::ConstPtr &msg)
 {
   //tMeasOffset=msg->tOffset.week*SEC_IN_WEEK+msg->tOffset.secondsOfWeek+msg->tOffset.fractionOfSecond;
@@ -196,16 +169,18 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   static float tLast=0;
   static Eigen::Vector3d ba0=Eigen::Vector3d(0,0,0);
   static Eigen::Vector3d bg0=Eigen::Vector3d(0,0,0);
-  static Eigen::Matrix3d RBI=Eigen::Matrix3d::Identity();
   static const int SF_TL = 24;
   static const int32_t SF_T = 0x1 << SF_TL;
   static const int32_t SF_T_MASK = SF_T - 1;
+  static int SEC_PER_WEEK = 604800;
   float dt;
+
+
+  //TODO: GET REFT FROM NAVSOL SUBSCRIBER
 
 
   //const s32 SF_T = 0x1 << SF_TL;
   int32_t tFracIndex = 0; //==0 in Matthew's code
-  int SEC_PER_WEEK=604800;
   //Modified slightly from gss->basetime.cpp
   //NOTE: truncL <=> msg->tIndexTrunc;
   //constexpr uint64_t one = 1ul;
@@ -267,7 +242,7 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   imuAttRateMeas(2) = msg->angularRate[2] * imuConfigAttRate;
 
   //Rotate gyro/accel to body frame
-  //TODO: gyro should use Rpqr convention.
+  //TODO: GYRO SHOULD USE RPQR CONVENTION
   Eigen::Matrix3d Raccel, Rgyro;
   Raccel<<-1,0,0, 0,-1,0, 0,0,-1;
   Rgyro<<1,0,0, 0,1,0, 0,0,1;
@@ -288,7 +263,7 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
     RBI=RBI*( Eigen::Matrix3d::Identity()+hatmat(xState.middleRows(6,3)) );
     xState.middleRows(6,3)=Eigen::Vector3d::Zero();
 
-  }else{
+  }else if(hasRBI){
 /*    imuAStore(counter,0)=imuAccelMeas(0);
     imuAStore(counter,1)=imuAccelMeas(1);
     imuAStore(counter,2)=imuAccelMeas(2);
@@ -314,6 +289,46 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
 
 void gpsImuNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBaselineRTK::ConstPtr &msg)
 {
+}
+
+void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::ConstPtr &msg)
+{
+  static int rCCalibCounter=0;
+  static int calibSamples=20;
+
+  //Ignore zero messages
+  if(msg->tSolution.week<=1)
+  {return;}
+
+  if(~hasRBI && msg->testStat>=100)
+  {
+    Eigen::Vector3d constrainedBaselineECEF(msg->rx,msg->ry,msg->rz);
+    Eigen::Vector3d constrainedBaselineENU = Recef2enu*constrainedBaselineECEF;
+    Eigen::Vector3d constrainedBaselineI = unit3(Rwrw*constrainedBaselineENU);
+    rCtildeCalib(rCCalibCounter%calibSamples,0)=constrainedBaselineI(0);
+    rCtildeCalib(rCCalibCounter%calibSamples,1)=constrainedBaselineI(1);
+    rCtildeCalib(rCCalibCounter%calibSamples,2)=constrainedBaselineI(2);
+    rBCalib(rCCalibCounter%calibSamples,0)=1;
+    rBCalib(rCCalibCounter%calibSamples,1)=0;
+    rBCalib(rCCalibCounter%calibSamples,2)=0;
+    //rCB=???
+    rCCalibCounter++;
+
+    if(rCCalibCounter>=calibSamples)
+    {
+      rCtildeCalib(calibSamples,0)=0; rBCalib(calibSamples,0)=0;
+      rCtildeCalib(calibSamples,1)=0; rBCalib(calibSamples,1)=0;
+      rCtildeCalib(calibSamples,2)=1; rBCalib(calibSamples,2)=1;
+      Eigen::MatrixXd weights;
+      weights.resize(calibSamples,1);
+      weights.topRows(calibSamples)=0.5*1/calibSamples*Eigen::MatrixXd::Ones(calibSamples,1);
+      weights(calibSamples)=0.5;
+      RBI=rotMatFromWahba(weights,rCtildeCalib,rBCalib);
+      hasRBI=true;
+    }
+  }
+
+  //do A2D to localframe conversion
 }
 
 

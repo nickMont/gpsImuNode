@@ -1,4 +1,7 @@
 #include "gpsImuNode.hpp"
+#include <Eigen/SVD>
+
+
 namespace gpsimu_odom
 {
 
@@ -45,7 +48,29 @@ Eigen::Matrix3d gpsImuNode::hatmat(const Eigen::Vector3d v1)
 }
 
 
+//Wabha solver.  Expects vI, vB as nx3 matrices with n sample vectors
+Eigen::Matrix3d gpsImuNode::rotMatFromWahba(const Eigen::VectorXd weights,
+	const::Eigen::MatrixXd vI, const::Eigen::MatrixXd vB)
+{
+	int n=weights.size();
+	Eigen::Matrix3d B=Eigen::Matrix3d::Zero();
+	for(int ij=0; ij++; ij<n)
+	{
+		B=B+weights(ij)*(vB.row(ij)).transpose()*vI.row(ij);
+	}
+	Eigen::Matrix3d U,V;
+	Eigen::JacobiSVD<Eigen::MatrixXd> svd(B, Eigen::ComputeFullV | Eigen::ComputeFullU);
+	U=svd.matrixU();
+	V=svd.matrixV();
+	Eigen::DiagonalMatrix<double, 3> M(1, 1, U.determinant()*V.determinant());
+	//M.asDiagonal(Eigen::Vector3d(1,1,U.determinant()*V.determinant()));
+	return U*M*(V.transpose());
+}
 
+Eigen::Vector3d gpsImuNode::unit3(const Eigen::Vector3d v1)
+{
+	return v1/v1.norm();
+}
 
 
 
