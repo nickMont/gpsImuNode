@@ -3,6 +3,8 @@
 g++ main.cpp -o testtest -I /usr/include/eigen3 -I /home/rnl/gnssIMUtest/gnssimu/include/
 to get relevant eigen headers*/
 
+//ECEF implementation, NOT local frame implementation
+
 //constants
 #define pi 3.14159265 //lazy, should just calculate this
 
