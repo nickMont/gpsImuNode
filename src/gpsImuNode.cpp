@@ -140,7 +140,7 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
                             this, ros::TransportHints().tcpNoDelay());
   imuConfigSub_ = nh.subscribe("IMUConfig",10, &gpsImuNode::imuConfigCallback,
                             this, ros::TransportHints().tcpNoDelay());
-  tOffsetSub_ = nh.subscribe("ObservablesMeasurementTime",10,&gpsImuNode::tOffCallback,
+  tOffsetSub_ = nh.subscribe("NavigationSolution",10,&gpsImuNode::tOffCallback,
                             this, ros::TransportHints().tcpNoDelay());
   ROS_INFO("Waiting for IMU config data, this may take a moment...");
   gbx_ros_bridge_msgs::ImuConfig::ConstPtr imuConfigMsg = ros::topic::waitForMessage<gbx_ros_bridge_msgs::ImuConfig>("IMUConfig");
@@ -155,10 +155,14 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
 }
 
 
-void gpsImuNode::tOffCallback(const gbx_ros_bridge_msgs::ObservablesMeasurementTime::ConstPtr &msg)
+void gpsImuNode::tOffCallback(const gbx_ros_bridge_msgs::NavigationSolution::ConstPtr &msg)
 {
-  //tMeasOffset=msg->tOffset.week*SEC_IN_WEEK+msg->tOffset.secondsOfWeek+msg->tOffset.fractionOfSecond;
+  //static int SEC_PER_WEEK = 604800;
+  //tMeasOffset=msg->tOffset.week*SEC_PER_WEEK+msg->tOffset.secondsOfWeek+msg->tOffset.fractionOfSecond;
   //time offset from converting RRT to ORT
+  trefWeek = msg->tSolution.week;
+  trefFracSecs = msg->tSolution.fractionOfSecond;
+  trefSecOfWeek = msg->tSolution.secondsOfWeek;
 }
 
 
@@ -187,10 +191,6 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   static const int32_t SF_T_MASK = SF_T - 1;
   static int SEC_PER_WEEK = 604800;
   float dt;
-
-
-  //TODO: GET REFT FROM NAVSOL SUBSCRIBER
-
 
   //const s32 SF_T = 0x1 << SF_TL;
   int32_t tFracIndex = 0; //==0 in Matthew's code
@@ -256,10 +256,10 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   imuAttRateMeas(2) = msg->angularRate[2] * imuConfigAttRate;
 
   //Rotate gyro/accel to body frame
-  //TODO: GYRO SHOULD USE RPQR CONVENTION
+  //NOTE: this does not need Rpqr convention
   Eigen::Matrix3d Raccel, Rgyro;
   Raccel<<-1,0,0, 0,-1,0, 0,0,-1;
-  Rgyro<<1,0,0, 0,1,0, 0,0,1;
+  Rgyro=Raccel;
   imuAccelMeas=Raccel*imuAccelMeas;
   imuAttRateMeas=Rgyro*imuAttRateMeas;
 

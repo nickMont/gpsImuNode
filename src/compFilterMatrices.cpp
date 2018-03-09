@@ -143,5 +143,50 @@ Eigen::Vector3d gpsImuNode::unit3(const Eigen::Vector3d v1)
 }
 
 
+//Adapted with minor changes from
+//http://www.euclideanspace.com/maths/geometry/rotations/conversions/matrixToQuaternion/index.htm
+Eigen::Quaterniond gpsImuNode::rotmat2quat(Eigen::Matrix3d RR)
+{
+	double trace = RR.trace();
+	Eigen::Matrix<double,4,1> q;
+	if (trace > 0) {// RR_EPSILON = 0
+		double s = 0.5 / sqrt(trace + 1.0);
+		q << 0.25 / s,
+			(RR(2,1) - RR(1,2))*s,
+			(RR(0,2) - RR(2,0))*s,
+			(RR(1,0) - RR(0,1))*s;
+	}
+	else {
+		if (RR(0,0) > RR(1,1) && RR(0,0) > RR(2,2)) {
+			double s = 2.0*sqrt(1.0 + RR(0,0) - RR(1,1) - RR(2,2));
+			q << (RR(2,1) - RR(1,2))/s,
+				 0.25*s,
+				 (RR(0,1) + RR(1,0))/s,
+				 (RR(0,2) + RR(2,0))/s;
+		}
+		else if (RR(1,1) > RR(2,2)) {
+			double s = 2.0*sqrt(1.0 + RR(1,1) - RR(0,0) - RR(2,2));
+			q << (RR(0,2) - RR(2,0))/s,
+			     (RR(0,1) + RR(1,0))/s,
+			     0.25 * s,
+			     (RR(1,2) + RR(2,1))/s;
+		}
+		else {
+			double s = 2.0*sqrt(1.0 + RR(2,2) - RR(0,0) - RR(1,1));
+			q << (RR(1,0) - RR(0,1))/s,
+			     (RR(0,2) + RR(2,0))/s,
+			     (RR(1,2) + RR(2,1))/s,
+			     0.25 * s;
+		}
+	}
+
+	Eigen::Quaterniond quat;
+	q=q/q.norm();
+	quat.x()=q(1);
+	quat.y()=q(2);
+	quat.z()=q(3);
+	quat.w()=q(0);
+    return quat;	
+}
 
 }
