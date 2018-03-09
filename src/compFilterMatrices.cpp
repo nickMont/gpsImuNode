@@ -145,7 +145,7 @@ Eigen::Vector3d gpsImuNode::unit3(const Eigen::Vector3d v1)
 
 //Adapted with minor changes from
 //http://www.euclideanspace.com/maths/geometry/rotations/conversions/matrixToQuaternion/index.htm
-Eigen::Quaterniond gpsImuNode::rotmat2quat(Eigen::Matrix3d RR)
+Eigen::Quaterniond gpsImuNode::rotmat2quat(const Eigen::Matrix3d RR)
 {
 	double trace = RR.trace();
 	Eigen::Matrix<double,4,1> q;

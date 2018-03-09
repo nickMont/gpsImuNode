@@ -126,8 +126,8 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
 
 
   // Initialize publishers and subscribers
-  odom_pub_ = nh.advertise<nav_msgs::Odometry>("odom", 10); //MUST have a node namespace, ns="quadName", in launchfile
-  localOdom_pub_ = nh.advertise<nav_msgs::Odometry>("local_odom", 10);
+  //odom_pub_ = nh.advertise<nav_msgs::Odometry>("odom", 10); //MUST have a node namespace, ns="quadName", in launchfile
+  localOdom_pub_ = nh.advertise<nav_msgs::Odometry>("local_odom_INS", 10);
   mocap_pub_ = nh.advertise<geometry_msgs::PoseStamped>("mavros/mocap/pose", 10);
 /*  gps_sub_ = nh.subscribe(quadPoseTopic, 10, &gpsImuNode::gpsCallback,
                             this, ros::TransportHints().tcpNoDelay());*/
@@ -260,9 +260,10 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   Eigen::Matrix3d Raccel, Rgyro;
   Raccel<<-1,0,0, 0,-1,0, 0,0,-1;
   Rgyro=Raccel;
-  imuAccelMeas=Raccel*imuAccelMeas;
-  imuAttRateMeas=Rgyro*imuAttRateMeas;
-
+  imuAccelMeas = Raccel*imuAccelMeas;
+  imuAttRateMeas = Rgyro*imuAttRateMeas;
+  Eigen::Vector3d gamma0(xState(6),xState(7),xState(8));
+  imuAccelMeas = imuAccelMeas - updateRBIfromGamma(RBI,gamma0)*Eigen::Vector3d(0,0,9.81);
 
   imuTimeTrunc = msg->tIndexTrunc;
   
@@ -279,15 +280,10 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
     RBI=updateRBIfromGamma(RBI, xState.middleRows(6,3));
     xState.middleRows(6,3)=Eigen::Vector3d::Zero();
 
-    //publish here?
+    publishOdomAndMocap();
 
-  }else if(hasRBI){
-/*    imuAStore(counter,0)=imuAccelMeas(0);
-    imuAStore(counter,1)=imuAccelMeas(1);
-    imuAStore(counter,2)=imuAccelMeas(2);
-    imuGStore(counter,0)=imuAttRateMeas(0);
-    imuGStore(counter,1)=imuAttRateMeas(1);
-    imuGStore(counter,2)=imuAttRateMeas(2);*/
+
+  }else if(hasRBI){  //if RBI has been calculated but the biases have not been calculated
     ba0=ba0+1/100*(imuAccelMeas+RBI*Eigen::Vector3d(0,0,9.81)); //inefficient
     bg0=bg0+1/100*imuAttRateMeas;
 
@@ -295,26 +291,6 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   }
 
 }
-
-/*void gpsImuNode::gpsCallback()
-{
-  //do GPS stuff
-
-  //Reset for next iter
-  Fimu=Eigen::Matrix<double,15,15>::Identity();
-}*/
-
-
-/*void gpsImuNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBaselineRTK::ConstPtr &msg)
-{
-}
-
-void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::ConstPtr &msg)
-{
-
-
-  //do A2D to localframe conversion
-}*/
 
 
 void gpsImuNode::PublishTransform(const geometry_msgs::Pose &pose,

@@ -28,6 +28,7 @@ class gpsImuNode
   void imuConfigCallback(const gbx_ros_bridge_msgs::ImuConfig::ConstPtr &msg);
   void imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg);
   void tOffCallback(const gbx_ros_bridge_msgs::NavigationSolution::ConstPtr &msg);
+  void publishOdomAndMocap();
   Eigen::Matrix<double,15,15> getFmatrixCF(const double dt, const Eigen::Vector3d fB,
     const Eigen::Vector3d omegaB, const Eigen::Matrix3d RR);
   Eigen::Matrix<double,15,6> getGammakmatrixCF(const double dt, const Eigen::Matrix3d RR);
@@ -49,7 +50,7 @@ class gpsImuNode
   Eigen::Matrix3d rotMatFromQuat(Eigen::Quaterniond qq);
   Eigen::Matrix3d rotMatFromWahba(const Eigen::VectorXd weights, const::Eigen::MatrixXd vI,
     const::Eigen::MatrixXd vB);
-  Eigen::Quaterniond rotmat2quat(Eigen::Matrix3d RR);
+  Eigen::Quaterniond rotmat2quat(const Eigen::Matrix3d RR);
   Eigen::Vector3d unit3(const Eigen::Vector3d v1);
 
  private:
