@@ -62,9 +62,9 @@ Eigen::Matrix<double,15,15> gpsImuNode::getFmatrixCF(const double dt, const Eige
 	//A is continuous time, Fk is discrete time
 	Eigen::Matrix<double,15,15> Ak = Eigen::MatrixXd::Zero(15,15);
 	Ak.block(0,3,3,3)=Eigen::Matrix3d::Identity();
-	Ak.block(3,6,3,3)=-RR*hatmat(fB);
-	Ak.block(3,12,3,3)=RR;
-	Ak.block(6,6,3,3)=hatmat(omegaB);
+	Ak.block(3,6,3,3)=-RR.transpose()*hatmat(fB-RR.transpose()*Eigen::Vector3d(0,0,-9.81));
+	Ak.block(3,12,3,3)=RR.transpose();
+	Ak.block(6,6,3,3)=RR*hatmat(omegaB);
 	Ak.block(6,9,3,3)=Eigen::Matrix3d::Identity();
 	return Eigen::Matrix<double,15,15>::Identity() + dt*Ak;
 }
@@ -100,8 +100,18 @@ Eigen::Matrix<double,6,15> gpsImuNode::getHkmatrixTwoAntennaCF(const Eigen::Vect
 {
 	Eigen::Matrix<double,6,15> Hk = Eigen::Matrix<double,6,15>::Zero();
 	Hk.block(0,0,3,3)=Eigen::Matrix3d::Identity();
-	Hk.block(0,6,3,3)=-RR*hatmat(Limu);
-	Hk.block(3,6,3,3)=-RR*hatmat(Ls2p);
+	Hk.block(0,6,3,3)=RR.transpose()*hatmat(Limu);
+	Hk.block(3,6,3,3)=RR.transpose()*hatmat(Ls2p);
+	return Hk;
+}
+
+
+Eigen::Matrix<double,6,15> gpsImuNode::getHkMatrixTwoAntennaTrueState(const Eigen::Vector3d Limu,
+	const Eigen::Vector3d Ls2p, const Eigen::Matrix3d RR)
+{
+	Eigen::Matrix<double,6,15> Hk = Eigen::Matrix<double,6,15>::Zero();
+	Hk.block(0,0,3,3)=Eigen::Matrix3d::Identity();
+	Hk.block(3,6,3,3)=RR.transpose()*hatmat(Ls2p);
 	return Hk;
 }
 

@@ -35,6 +35,8 @@ class gpsImuNode
   Eigen::Matrix<double,3,15> getHkmatrixOneAntennaCF(const Eigen::Vector3d Lab, const Eigen::Matrix3d RR);
   Eigen::Matrix<double,6,15> getHkmatrixTwoAntennaCF(const Eigen::Vector3d Limu,
     const Eigen::Vector3d Ls2p, const Eigen::Matrix3d RR);
+  Eigen::Matrix<double,6,15> getHkMatrixTwoAntennaTrueState(const Eigen::Vector3d Limu,
+    const Eigen::Vector3d Ls2p, const Eigen::Matrix3d RR);
   void kfCFPropagate(const double dt0, const Eigen::Matrix<double,15,15> P0,
     const Eigen::Matrix<double,15,1> x0, const Eigen::Matrix<double,15,15> F0,
     const Eigen::Matrix3d RR, const Eigen::Matrix<double,6,6> Qk,

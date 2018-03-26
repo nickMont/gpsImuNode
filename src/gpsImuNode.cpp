@@ -85,8 +85,9 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   ros::param::get(quadName + "/minimumTestStat",minTestStat);
   ros::param::get(quadName + "/maxThrust",tmax);
 
-  Qimu<<1e-3,1e-3,1e-3,1e-2,1e-2,1e-2;
-  Rk<<1e-1, 1e-1, 1e-1, 2.5*1e-2, 2.5*1e-2, 2.5*1e-2;
+  Eigen::Matrix<double,6,6> temp;
+  Qimu=1e-1*Eigen::Matrix<double,6,6>::Identity();
+  Rk=1e-2*Eigen::Matrix<double,6,6>::Identity();
 
   one = 1ul;
 
@@ -120,9 +121,9 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   internalSeq=0;
 
   //Secondary to primary vector in body frame.  TODO: measure
-  l_s2p<<-0.24,0,0;
+  l_s2p<<0.195,0,0;
   //
-  l_imu<<-0.24,0,-0.10;
+  l_imu<<0.195,0,-0.10;
 
 
   // Initialize publishers and subscribers
@@ -255,10 +256,11 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   imuAttRateMeas(1) = msg->angularRate[1] * imuConfigAttRate;
   imuAttRateMeas(2) = msg->angularRate[2] * imuConfigAttRate;
 
-  //Rotate gyro/accel to body frame
-  //NOTE: this does not need Rpqr convention
+  //Rotate gyro/accel measurements to body frame
+  //NOTE1: this does not need Rpqr convention
+  //NOTE2: this is hardcoded for the lynx as mounted on phoenix and company
   Eigen::Matrix3d Raccel, Rgyro;
-  Raccel<<-1,0,0, 0,-1,0, 0,0,-1;
+  Raccel<<0,-1,0, -1,0,0, 0,0,-1;
   Rgyro=Raccel;
   imuAccelMeas = Raccel*imuAccelMeas;
   imuAttRateMeas = Rgyro*imuAttRateMeas;
