@@ -54,6 +54,7 @@ class gpsImuNode
     const::Eigen::MatrixXd vB);
   Eigen::Quaterniond rotmat2quat(const Eigen::Matrix3d RR);
   Eigen::Vector3d unit3(const Eigen::Vector3d v1);
+  void updateIMUtime(const uint64_t tIndex0, int &gpsWeek, int &gpsSec, float &gpsFracSec);
 
  private:
   void PublishTransform(const geometry_msgs::Pose &pose,
@@ -88,10 +89,9 @@ class gpsImuNode
       imuConfigAccel, imuConfigAttRate, tMeasOffset, pi, tLastProcessed;
   bool validRTKtest, validA2Dtest, kfInit, hasAlreadyReceivedA2D, hasAlreadyReceivedRTK, hasRBI;
 
-  int32_t trefWeek, trefSecOfWeek;
+  int32_t trefWeek, trefSecOfWeek, tIndexKconfig;
   float trefFracSecs;
   uint64_t sampleFreqNum, sampleFreqDen;
-
   uint64_t one, imuTimeTrunc;
 
 };

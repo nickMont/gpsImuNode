@@ -89,7 +89,7 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   Qimu=1e-1*Eigen::Matrix<double,6,6>::Identity();
   Rk=1e-2*Eigen::Matrix<double,6,6>::Identity();
 
-  one = 1ul;
+  one = 1UL;
 
   //Get additional parameters for the kalkman filter
   nh.param(quadName + "/max_accel", max_accel, 2.0);
@@ -120,11 +120,11 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   //internalQuat.resize(4);
   internalSeq=0;
 
-  //Secondary to primary vector in body frame.  TODO: measure
+  //Secondary to primary vector in body frame
   l_s2p<<0.195,0,0;
-  //
-  l_imu<<0.195,0,-0.10;
+  l_imu<<-0.195,0,-0.10;
 
+  hasRBI = false;
 
   // Initialize publishers and subscribers
   //odom_pub_ = nh.advertise<nav_msgs::Odometry>("odom", 10); //MUST have a node namespace, ns="quadName", in launchfile
@@ -147,6 +147,9 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   gbx_ros_bridge_msgs::ImuConfig::ConstPtr imuConfigMsg = ros::topic::waitForMessage<gbx_ros_bridge_msgs::ImuConfig>("IMUConfig");
   imuConfigAccel = imuConfigMsg->lsbToMetersPerSecSq;
   imuConfigAttRate = imuConfigMsg->lsbToRadPerSec;
+  sampleFreqNum = imuConfigMsg->sampleFreqNumerator;
+  sampleFreqDen = imuConfigMsg->sampleFreqDenominator;  
+  tIndexKconfig = imuConfigMsg->tIndexk;
   ROS_INFO("IMU configuration recorded, finishing startup.");
   ROS_INFO("Startup complete");
 
@@ -169,36 +172,46 @@ void gpsImuNode::tOffCallback(const gbx_ros_bridge_msgs::NavigationSolution::Con
 
 void gpsImuNode::imuConfigCallback(const gbx_ros_bridge_msgs::ImuConfig::ConstPtr &msg)
 {
+  std::cout << "Config message received!" << std::endl;
   imuConfigAccel = msg->lsbToMetersPerSecSq; //scaling to m/s2 from "non-engineering units"
   imuConfigAttRate = msg->lsbToRadPerSec; //scaling to rad/s from "non-engineering units"
   //imuSampleFreq = msg->sampleFreqNumerator/msg->sampleFreqDenominator/36/3600;  //samples per second
   
   sampleFreqNum = msg->sampleFreqNumerator;
   sampleFreqDen = msg->sampleFreqDenominator;
-  
+  tIndexKconfig = msg->tIndexk;
 }
 
 
 void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
 {
-  static bool isCalibrated=false;
-  static int counter=-1;
+  //Initialization variables
+  static bool isCalibrated(false);
+  static int counter(0);
   static Eigen::Matrix<double,100,3> imuAStore, imuGStore;
-  static float tLastImu=0;
-  static Eigen::Vector3d ba0=Eigen::Vector3d(0,0,0);
-  static Eigen::Vector3d bg0=Eigen::Vector3d(0,0,0);
+  static float tLastImu(0);
+  static Eigen::Vector3d ba0(0,0,0);
+  static Eigen::Vector3d bg0(0,0,0);
+  //gps variables
+  // static const int SEC_PER_WEEK(604800);
   static const int SF_TL = 24;
   static const int32_t SF_T = 0x1 << SF_TL;
   static const int32_t SF_T_MASK = SF_T - 1;
-  static int SEC_PER_WEEK = 604800;
+  static const int SEC_PER_WEEK(604800);
+  static const double EPSILON(1e-15);
   float dt;
 
-  //const s32 SF_T = 0x1 << SF_TL;
-  int32_t tFracIndex = 0; //==0 in Matthew's code
+  //Calculate IMU time
+  int week_, secondsOfWeek_;
+  float fractionOfSecond_;
+  uint64_t tIndex = msg->tIndexTrunc;
+  updateIMUtime(tIndex, week_, secondsOfWeek_, fractionOfSecond_);
+  /*//setWithTruncatedSampleTime()
+  int32_t tFracIndex = tIndexKconfig;
   //Modified slightly from gss->basetime.cpp
   //NOTE: truncL <=> msg->tIndexTrunc;
-  //constexpr uint64_t one = 1ul;
-  const uint64_t trunc = one << imuTimeTrunc;
+  //constexpr uint64_t one = 1ul; //defined at class level
+  const uint64_t trunc = one << tIndex;
   const uint64_t truncHalf = trunc>>1;
   const uint64_t truncM = trunc-1;
   //ASSERT(tIndex < trunc);
@@ -214,9 +227,19 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   int32_t reftFracIndex = static_cast<int32_t>(std::floor(fracSamples*SF_T + 0.5));
   reftIndex += (reftFracIndex >> SF_TL);
   reftFracIndex = (reftFracIndex & SF_T_MASK);
-  uint64_t tIndex = (reftIndex & ~truncM) | tIndex;
+  uint64_t fulltIndex = (reftIndex & ~truncM) | tIndex;
   uint64_t truncReftIndex = reftIndex & truncM;
+  if(truncReftIndex >= truncHalf){
+    if(tIndex < truncReftIndex-truncHalf)
+      fulltIndex += trunc;
+  }
+  else{
+    if(tIndex > truncReftIndex+truncHalf)
+      fulltIndex -= trunc;
+  }
 
+  //setWithSampleTime()
+  tIndex = fulltIndex;
   const float delt = (static_cast<float>(sampleFreqDen))/sampleFreqNum;
   // One interval is equal to sampleFreqDen seconds
   const uint32_t nWholeIntervals = static_cast<uint32_t>(tIndex/sampleFreqNum);
@@ -229,25 +252,49 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   const uint32_t nWholeSecondsInWholeIntervals = nWholeIntervals*sampleFreqDen;
   const uint32_t nWholeSecondsWithinFractionalInterval =
   static_cast<uint32_t>(std::floor(secondsWithinFractionalInterval));
-
   int week_ = nWholeSecondsInWholeIntervals/SEC_PER_WEEK;
   int secondsOfWeek_ = (nWholeSecondsInWholeIntervals % SEC_PER_WEEK) +
     nWholeSecondsWithinFractionalInterval;
   float fractionOfSecond_ = secondsWithinFractionalInterval -
     nWholeSecondsWithinFractionalInterval;
+
+  //normalize()
+  if(std::fabs(fractionOfSecond_) >= 1.0){
+    int32_t sec = static_cast<int32_t>(fractionOfSecond_);
+    secondsOfWeek_ += sec;
+    fractionOfSecond_ -= static_cast<double>(sec);
+  }
+  if(std::abs(secondsOfWeek_) >= SEC_PER_WEEK){
+    const uint64_t wholeWeeks = secondsOfWeek_/SEC_PER_WEEK; //const auto in normalize()
+    week_ += wholeWeeks;
+    secondsOfWeek_ -= (wholeWeeks*SEC_PER_WEEK);
+  }
+  if(std::fabs(fractionOfSecond_) < EPSILON)
+    fractionOfSecond_ = 0.0;
+  // Enforce non-negative fractionOfSecond_ and secondsOfWeek_; a
+  // negative week_ is fine.
+  while(fractionOfSecond_ < 0){
+    fractionOfSecond_ += 1.0;
+    --secondsOfWeek_;
+  }
+  while(secondsOfWeek_ < 0){
+    secondsOfWeek_ += SEC_PER_WEEK;
+    --week_;
+  }*/
+
   float thisTime=week_*SEC_PER_WEEK+secondsOfWeek_+fractionOfSecond_;
   //NOTE: tLastProcessed is the last gps OR imu measurement processed whereas tLastImu is JUST imu
-  dt = thisTime-tLastImu;
+  std::cout << "Week: " << week_ << std::endl;
+  std::cout << "Sec : " << secondsOfWeek_ << std::endl;
+  std::cout << "Fsec: " << fractionOfSecond_ << std::endl;
 
-  if(dt<=1e-8)
+  dt = thisTime-tLastImu;
+  tLastImu=thisTime;
+  if(dt<=1e-9)
   {
+    //std::cout << "Error: 1ns between IMU measurements" << std::endl;
     return;
   }
-
-  //Only update time if you accept the data
-  tLastImu=thisTime;
-
-  counter++;
 
   imuAccelMeas(0) = msg->acceleration[0] * imuConfigAccel;
   imuAccelMeas(1) = msg->acceleration[1] * imuConfigAccel;
@@ -267,11 +314,7 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   Eigen::Vector3d gamma0(xState(6),xState(7),xState(8));
   imuAccelMeas = imuAccelMeas - updateRBIfromGamma(RBI,gamma0)*Eigen::Vector3d(0,0,9.81);
 
-  imuTimeTrunc = msg->tIndexTrunc;
-  
-  // Try ground calibration step for simplicity
-  if(counter>=100){isCalibrated=true;}
-
+  std::cout << "has estimated RBI: " << hasRBI <<std::endl;
   //Run CF if calibrated
   if(isCalibrated)
   {
@@ -283,13 +326,17 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
     xState.middleRows(6,3)=Eigen::Vector3d::Zero();
 
     publishOdomAndMocap();
-
-
-  }else if(hasRBI){  //if RBI has been calculated but the biases have not been calculated
+  }else if(hasRBI)
+  {  //if RBI has been calculated but the biases have not been calculated
     ba0=ba0+1/100*(imuAccelMeas+RBI*Eigen::Vector3d(0,0,9.81)); //inefficient
     bg0=bg0+1/100*imuAttRateMeas;
-
-    xState<<0,0,0, 0,0,0, 0,0,0, ba0(0),ba0(1),ba0(2), bg0(0),bg0(1),bg0(2);
+    std::cout<<"calibcounter"<<counter<<std::endl;
+    std::cout<<"RBI generated, estimating biases"<<std::endl;
+    xState<<internal_rI(0),internal_rI(1),internal_rI(2), 0,0,0, 0,0,0, ba0(0),ba0(1),ba0(2), bg0(0),bg0(1),bg0(2);
+    //std::cout<<xState<<std::endl;
+    counter++;
+    // Try ground calibration step for simplicity
+    if(counter>=100){isCalibrated=true;}
   }
 
 }
