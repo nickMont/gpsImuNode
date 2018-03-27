@@ -66,7 +66,7 @@ void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::Const
     if(msg->tSolution.week<=1)
     {return;}
 
-    if(hasRBI && msg->testStat>=100)
+    if(!hasRBI && msg->testStat>=100)
     {
         Eigen::Vector3d constrainedBaselineECEF(msg->rx,msg->ry,msg->rz);
         Eigen::Vector3d constrainedBaselineENU = Recef2enu*constrainedBaselineECEF;
@@ -91,7 +91,7 @@ void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::Const
             weights.topRows(calibSamples)=0.5*1/calibSamples*Eigen::MatrixXd::Ones(calibSamples,1);
             weights(calibSamples)=0.5;
             RBI=rotMatFromWahba(weights,rCtildeCalib,rBCalib);
-            std::cout<<RBI<<std::endl;
+            std::cout<<"RBI(0) loaded:"<<std::endl<<RBI<<std::endl;
             hasRBI=true;
 
             //also set initial reference position for CF

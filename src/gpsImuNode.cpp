@@ -174,6 +174,7 @@ void gpsImuNode::navsolCallback(const gbx_ros_bridge_msgs::NavigationSolution::C
 }
 
 
+//Get reference RRT time and measurement offset time from Observables message
 void gpsImuNode::tOffsetCallback(const gbx_ros_bridge_msgs::ObservablesMeasurementTime::ConstPtr &msg)
 {
   trefWeek = msg->tMeasurement.week;
@@ -185,6 +186,7 @@ void gpsImuNode::tOffsetCallback(const gbx_ros_bridge_msgs::ObservablesMeasureme
 }
 
 
+//Get upper 32 bits of tIndex counter
 void gpsImuNode::imuConfigCallback(const gbx_ros_bridge_msgs::ImuConfig::ConstPtr &msg)
 {
   std::cout << "Config message received!" << std::endl;
@@ -201,12 +203,13 @@ void gpsImuNode::imuConfigCallback(const gbx_ros_bridge_msgs::ImuConfig::ConstPt
 void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
 {
   //Initialization variables
-  static bool isCalibrated(false);
-  static int counter(0);
-  static Eigen::Matrix<double,100,3> imuAStore, imuGStore;
-  static float tLastImu(0);
-  static Eigen::Vector3d ba0(0,0,0);
-  static Eigen::Vector3d bg0(0,0,0);
+  static bool isCalibrated=false;
+  static int counter=0;
+  static Eigen::Matrix<double,100,3> imuAStore=Eigen::MatrixXd::Zero(100,3);
+  static Eigen::Matrix<double,100,3> imuGStore=Eigen::MatrixXd::Zero(100,3);
+  static float tLastImu=0;
+  static Eigen::Vector3d ba0=Eigen::Vector3d(0,0,0);
+  static Eigen::Vector3d bg0=Eigen::Vector3d(0,0,0);
   //gps variables
   // static const int SEC_PER_WEEK(604800);
   static const int SF_TL(24);
@@ -225,6 +228,7 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   const float thisTimeRRT = week_*SEC_PER_WEEK+secondsOfWeek_+fractionOfSecond_;
   //uint64_t tFullIndex = tIndexKconfig << 32 + tIndex;
   //float thisTimeRRT = tFullIndex*sampleFreqNum/sampleFreqDen;
+  //std::cout << thisTimeRRT;
   const float thisTimeORT = thisTimeRRT + toffsetWeek*SEC_PER_WEEK + toffsetSecOfWeek + toffsetFracSecs;
   const float thisTime = thisTimeORT - deltaRX/cLight;
 
@@ -261,7 +265,6 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   Eigen::Vector3d gamma0(xState(6),xState(7),xState(8));
   imuAccelMeas = imuAccelMeas - updateRBIfromGamma(RBI,gamma0)*Eigen::Vector3d(0,0,9.81);
 
-  std::cout << "has estimated RBI: " << hasRBI <<std::endl;
   //Run CF if calibrated
   if(isCalibrated)
   {
