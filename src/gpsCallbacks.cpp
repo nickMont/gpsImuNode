@@ -17,9 +17,10 @@ void gpsImuNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBase
         lastRTKtime=ttime;
         if(msg->testStat > minTestStat)
         {
-            tnavsolWeek = msg->tSolution.week;
-            tnavsolFracSecs = msg->tSolution.fractionOfSecond;
-            tnavsolSecOfWeek = msg->tSolution.secondsOfWeek;
+            //tnavsolWeek = msg->tSolution.week;
+            //tnavsolFracSecs = msg->tSolution.fractionOfSecond;
+            //tnavsolSecOfWeek = msg->tSolution.secondsOfWeek;
+
             validRTKtest=true;
             Eigen::Vector3d tmpvec;
             //Rotate rECEF to rI and store in internal_rI
@@ -36,20 +37,23 @@ void gpsImuNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBase
         {
             internalSeq++;
 
-            //Run CF
-            Fimu = getFmatrixCF(ttime-tLastProcessed,imuAccelMeas,imuAttRateMeas,RBI) * Fimu;
-            runCF(ttime-tLastProcessed);
+            if(isCalibrated)
+            {
+              //Run CF
+              Fimu = getFmatrixCF(ttime-tLastProcessed,imuAccelMeas,imuAttRateMeas,RBI) * Fimu;
+              runCF(ttime-tLastProcessed);
 
-            //Publish messages
-            publishOdomAndMocap();
+              //Publish messages
+              publishOdomAndMocap();
 
-            //Clean up
-            Fimu = Eigen::MatrixXd::Identity(15,15);
-            tLastProcessed = ttime;
-            RBI = updateRBIfromGamma(RBI,xState.middleRows(6,3));
-            xState.middleRows(6,3)=Eigen::Vector3d::Zero();
-            rRefImu=rRefImu+xState.topRows(3);
-            xState.topRows(3)=Eigen::Vector3d::Zero();
+              //Clean up
+              Fimu = Eigen::MatrixXd::Identity(15,15);
+              tLastProcessed = ttime;
+              RBI = updateRBIfromGamma(RBI,xState.middleRows(6,3));
+              xState.middleRows(6,3)=Eigen::Vector3d::Zero();
+              rRefImu=rRefImu+xState.topRows(3);
+              xState.topRows(3)=Eigen::Vector3d::Zero();
+            }
 
             //Reset to avoid publishing twice
             hasAlreadyReceivedRTK=false; hasAlreadyReceivedA2D=false; 
@@ -129,20 +133,23 @@ void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::Const
         {
             internalSeq++;
 
-            //Run CF
-            Fimu = getFmatrixCF(ttime-tLastProcessed,imuAccelMeas,imuAttRateMeas,RBI) * Fimu;
-            runCF(ttime-tLastProcessed);
+            if(isCalibrated)
+            {
+              //Run CF
+              Fimu = getFmatrixCF(ttime-tLastProcessed,imuAccelMeas,imuAttRateMeas,RBI) * Fimu;
+              runCF(ttime-tLastProcessed);
 
-            //Publish messages
-            publishOdomAndMocap();
+              //Publish messages
+              publishOdomAndMocap();
 
-            //Clean up
-            Fimu = Eigen::MatrixXd::Identity(15,15);
-            tLastProcessed = ttime;
-            RBI = updateRBIfromGamma(RBI,xState.middleRows(6,3));
-            xState.middleRows(6,3)=Eigen::Vector3d::Zero();
-            rRefImu=rRefImu+xState.topRows(3);
-            xState.topRows(3)=Eigen::Vector3d::Zero();
+              //Clean up
+              Fimu = Eigen::MatrixXd::Identity(15,15);
+              tLastProcessed = ttime;
+              RBI = updateRBIfromGamma(RBI,xState.middleRows(6,3));
+              xState.middleRows(6,3)=Eigen::Vector3d::Zero();
+              rRefImu=rRefImu+xState.topRows(3);
+              xState.topRows(3)=Eigen::Vector3d::Zero();
+            }
 
             //Reset to avoid publishing twice
             hasAlreadyReceivedRTK=false; hasAlreadyReceivedA2D=false;
@@ -193,7 +200,7 @@ void gpsImuNode::publishOdomAndMocap()
 //returns RRT. Must be converted to ORT (via tOffset) and then to gpsTime (via dtrx/clight)
 void gpsImuNode::updateIMUtimeRRT(const uint64_t tIndex0, int &gpsWeek, int &gpsSec, float &gpsFracSec)
 {
-
+/*
   static const int SF_TL = 24;
   static const int32_t SF_T = 0x1 << SF_TL;
   static const int32_t SF_T_MASK = SF_T - 1;
@@ -278,15 +285,15 @@ void gpsImuNode::updateIMUtimeRRT(const uint64_t tIndex0, int &gpsWeek, int &gps
     --week_;
   }
 
-  /*std::cout << "Week: " << week_ << std::endl;
-  std::cout << "Sec : " << secondsOfWeek_ << std::endl;
-  std::cout << "Fsec: " << fractionOfSecond_ << std::endl;*/
+  //std::cout << "Week: " << week_ << std::endl;
+  //std::cout << "Sec : " << secondsOfWeek_ << std::endl;
+  //std::cout << "Fsec: " << fractionOfSecond_ << std::endl;
 
   //return via non-const vars
   gpsWeek = week_;
   gpsSec = secondsOfWeek_;
   gpsFracSec = fractionOfSecond_;
-  return;
+  return;*/
 }
 
 } //end namespace

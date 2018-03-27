@@ -124,7 +124,9 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   l_s2p<<0.195,0,0;
   l_imu<<-0.195,0,-0.10;
 
+  //First get rbi(0), then get biases(0)
   hasRBI = false;
+  isCalibrated=false;
 
   // Initialize publishers and subscribers
   //odom_pub_ = nh.advertise<nav_msgs::Odometry>("odom", 10); //MUST have a node namespace, ns="quadName", in launchfile
@@ -153,6 +155,9 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   sampleFreqDen = imuConfigMsg->sampleFreqDenominator;  
   tIndexConfig = imuConfigMsg->tIndexk;
   ROS_INFO("IMU configuration recorded, finishing startup.");
+
+  //WAIT FOR TOFFSET GOES HERE
+
   ROS_INFO("Startup complete");
 
   //Get initial pose
@@ -164,25 +169,29 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
 void gpsImuNode::navsolCallback(const gbx_ros_bridge_msgs::NavigationSolution::ConstPtr &msg)
 {
   //static int SEC_PER_WEEK = 604800;
-  //tMeasOffset=msg->tOffset.week*SEC_PER_WEEK+msg->tOffset.secondsOfWeek+msg->tOffset.fractionOfSecond;
-  //time offset from converting RRT to ORT
 
   dtRX_meters = msg->deltatRxMeters;
-/*  tnavsolWeek = msg->tSolution.week;
-  tnavsolFracSecs = msg->tSolution.fractionOfSecond;
-  tnavsolSecOfWeek = msg->tSolution.secondsOfWeek;*/
 }
 
 
 //Get reference RRT time and measurement offset time from Observables message
 void gpsImuNode::tOffsetCallback(const gbx_ros_bridge_msgs::ObservablesMeasurementTime::ConstPtr &msg)
 {
-  trefWeek = msg->tMeasurement.week;
-  trefFracSecs = msg->tMeasurement.fractionOfSecond;
-  trefSecOfWeek = msg->tMeasurement.secondsOfWeek;
+  static const int SEC_PER_WEEK(604800);
+  tmeasWeek = msg->tMeasurement.week;
+  tmeasFracSecs = msg->tMeasurement.fractionOfSecond;
+  tmeasSecOfWeek = msg->tMeasurement.secondsOfWeek;
+
   toffsetWeek = msg->tOffset.week;
   toffsetSecOfWeek = msg->tOffset.secondsOfWeek;
   toffsetFracSecs = msg->tOffset.fractionOfSecond;
+
+  const double tmeas = tmeasWeek*SEC_PER_WEEK + tmeasSecOfWeek + tmeasFracSecs;
+  const double tnavsol = tnavsolWeek*SEC_PER_WEEK + tnavsolSecOfWeek + tnavsolFracSecs;
+  const double tOffset = toffsetWeek*SEC_PER_WEEK + toffsetSecOfWeek + toffsetFracSecs;
+  //std::cout << "tsol_MEAS: " << tmeas+tOffset - tnavsol << std::endl;
+  //std::cout << "navsol: " << tnavsolWeek << " " << tnavsolSecOfWeek << " " << tnavsolFracSecs <<std::endl;
+  //std::cout << "calcd : " << tmeasWeek+toffsetWeek << " " << tmeasSecOfWeek+toffsetSecOfWeek << " " << tmeasFracSecs+toffsetFracSecs <<std::endl;
 }
 
 
@@ -203,7 +212,6 @@ void gpsImuNode::imuConfigCallback(const gbx_ros_bridge_msgs::ImuConfig::ConstPt
 void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
 {
   //Initialization variables
-  static bool isCalibrated=false;
   static int counter=0;
   static Eigen::Matrix<double,100,3> imuAStore=Eigen::MatrixXd::Zero(100,3);
   static Eigen::Matrix<double,100,3> imuGStore=Eigen::MatrixXd::Zero(100,3);
@@ -211,12 +219,7 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   static Eigen::Vector3d ba0=Eigen::Vector3d(0,0,0);
   static Eigen::Vector3d bg0=Eigen::Vector3d(0,0,0);
   //gps variables
-  // static const int SEC_PER_WEEK(604800);
-  static const int SF_TL(24);
-  static const int32_t SF_T(0x1 << SF_TL);
-  static const int32_t SF_T_MASK(SF_T - 1);
   static const int SEC_PER_WEEK(604800);
-  static const double EPSILON(1e-15);
   static const double cLight(299792458);
   float dt;
 
@@ -231,23 +234,19 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   //std::cout << thisTimeRRT;
   //const float thisTimeORT = thisTimeRRT + toffsetWeek*SEC_PER_WEEK + toffsetSecOfWeek + toffsetFracSecs;
   //const float thisTime = thisTimeORT - deltaRX/cLight;
-  uint64_t mask = 0xffffffff; // This is: (1 << 32) - 1
-  uint64_t tIndexFull = (tIndexConfig & ~mask) | (tIndex & mask); // You don't want to bit-shift by 32-bits. You want to bit-mask to use the upper 32-bits from tIndexImuConfig and the lower 32-bits from tIndexImu
+  long long int mask = 0xffffffff; // This is: (1 << 32) - 1
+  long long int tIndexFull = (tIndexConfig & ~mask) | (tIndex & mask); // You don't want to bit-shift by 32-bits. You want to bit-mask to use the upper 32-bits from tIndexImuConfig and the lower 32-bits from tIndexImu
   double sampleFreq = sampleFreqNum/sampleFreqDen;
   double tRRT = tIndexFull/sampleFreq; // tIndexFull is in units of samples. Divide by sample rate to get units of seconds.
-  std::cout << "rrt seconds:" << tRRT << std::endl;
-  double tOffset = toffsetWeek*SEC_PER_WEEK + toffsetSecOfWeek + toffsetFracSecs;
-  double tORT = tRRT + tOffset; // tOffset comes from ObservablesMeasurementTime
-  double tGPS = tORT - dtRX_meters/cLight; // dtrx comes from NavigationSolution
-  double thisTime = tGPS;
-
-  //NOTE: tLastProcessed is the last gps OR imu measurement processed whereas tLastImu is JUST imu
-  //std::cout << "Week: " << week_ << std::endl;
-  //std::cout << "Sec : " << secondsOfWeek_ << std::endl;
-  //std::cout << "Fsec: " << fractionOfSecond_ << std::endl;
-  //std::cout << "diff: " << thisTime - thisTimeRRT << std::endl;
-  std::cout << "tsol: " << tnavsolWeek*SEC_PER_WEEK + tnavsolFracSecs + tnavsolSecOfWeek - thisTime << std::endl;
-
+  //std::cout << "rrt seconds:" << tRRT << std::endl;
+  //std::cout << "meas-rrt:   " << tRRT - (tmeasSecOfWeek + tmeasFracSecs) << std::endl;
+  //const double tmeas = tmeasFracSecs + tmeasWeek*SEC_PER_WEEK + tmeasSecOfWeek;
+  //const double tnavsol = tnavsolFracSecs + tnavsolWeek*SEC_PER_WEEK + tnavsolSecOfWeek;
+  const double tOffset = toffsetFracSecs + toffsetWeek*SEC_PER_WEEK + toffsetSecOfWeek;
+  const double tORT = tRRT + tOffset; // tOffset comes from ObservablesMeasurementTime
+  const double tGPS = tORT - dtRX_meters/cLight; // dtrx comes from NavigationSolution
+  const double thisTime = tGPS;
+ 
   dt = thisTime-tLastImu;
   tLastImu=thisTime;
   if(dt<=1e-9)
