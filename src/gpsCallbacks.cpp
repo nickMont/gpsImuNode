@@ -17,6 +17,9 @@ void gpsImuNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBase
         lastRTKtime=ttime;
         if(msg->testStat > minTestStat)
         {
+            tnavsolWeek = msg->tSolution.week;
+            tnavsolFracSecs = msg->tSolution.fractionOfSecond;
+            tnavsolSecOfWeek = msg->tSolution.secondsOfWeek;
             validRTKtest=true;
             Eigen::Vector3d tmpvec;
             //Rotate rECEF to rI and store in internal_rI

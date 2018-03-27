@@ -91,11 +91,11 @@ class gpsImuNode
       imuConfigAccel, imuConfigAttRate, tMeasOffset, pi, tLastProcessed;
   bool validRTKtest, validA2Dtest, kfInit, hasAlreadyReceivedA2D, hasAlreadyReceivedRTK, hasRBI;
 
-  int32_t trefWeek, trefSecOfWeek, tIndexKconfig, toffsetWeek, toffsetSecOfWeek;
+  uint32_t trefWeek, trefSecOfWeek, tIndexConfig, toffsetWeek, toffsetSecOfWeek;
   float trefFracSecs, toffsetFracSecs;
   uint64_t sampleFreqNum, sampleFreqDen;
   uint64_t one, imuTimeTrunc;
-  double deltaRX;
+  double dtRX_meters;
 
   int32_t tnavsolWeek, tnavsolSecOfWeek;
   float tnavsolFracSecs;

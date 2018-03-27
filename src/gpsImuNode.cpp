@@ -151,7 +151,7 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   imuConfigAttRate = imuConfigMsg->lsbToRadPerSec;
   sampleFreqNum = imuConfigMsg->sampleFreqNumerator;
   sampleFreqDen = imuConfigMsg->sampleFreqDenominator;  
-  tIndexKconfig = imuConfigMsg->tIndexk;
+  tIndexConfig = imuConfigMsg->tIndexk;
   ROS_INFO("IMU configuration recorded, finishing startup.");
   ROS_INFO("Startup complete");
 
@@ -167,10 +167,10 @@ void gpsImuNode::navsolCallback(const gbx_ros_bridge_msgs::NavigationSolution::C
   //tMeasOffset=msg->tOffset.week*SEC_PER_WEEK+msg->tOffset.secondsOfWeek+msg->tOffset.fractionOfSecond;
   //time offset from converting RRT to ORT
 
-  deltaRX = msg->deltatRxMeters;
-  tnavsolWeek = msg->tSolution.week;
+  dtRX_meters = msg->deltatRxMeters;
+/*  tnavsolWeek = msg->tSolution.week;
   tnavsolFracSecs = msg->tSolution.fractionOfSecond;
-  tnavsolSecOfWeek = msg->tSolution.secondsOfWeek;
+  tnavsolSecOfWeek = msg->tSolution.secondsOfWeek;*/
 }
 
 
@@ -196,7 +196,7 @@ void gpsImuNode::imuConfigCallback(const gbx_ros_bridge_msgs::ImuConfig::ConstPt
   
   sampleFreqNum = msg->sampleFreqNumerator;
   sampleFreqDen = msg->sampleFreqDenominator;
-  tIndexKconfig = msg->tIndexk;
+  tIndexConfig = msg->tIndexk;
 }
 
 
@@ -221,16 +221,25 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   float dt;
 
   //Calculate IMU time
-  int week_, secondsOfWeek_;
-  float fractionOfSecond_;
+  //int week_, secondsOfWeek_;
+  //float fractionOfSecond_;
   uint64_t tIndex = msg->tIndexTrunc;
-  updateIMUtimeRRT(tIndex, week_, secondsOfWeek_, fractionOfSecond_);
-  const float thisTimeRRT = week_*SEC_PER_WEEK+secondsOfWeek_+fractionOfSecond_;
-  //uint64_t tFullIndex = tIndexKconfig << 32 + tIndex;
+  //updateIMUtimeRRT(tIndex, week_, secondsOfWeek_, fractionOfSecond_);
+  //const float thisTimeRRT = week_*SEC_PER_WEEK+secondsOfWeek_+fractionOfSecond_;
+  //uint64_t tFullIndex = tIndexConfig << 32 + tIndex;
   //float thisTimeRRT = tFullIndex*sampleFreqNum/sampleFreqDen;
   //std::cout << thisTimeRRT;
-  const float thisTimeORT = thisTimeRRT + toffsetWeek*SEC_PER_WEEK + toffsetSecOfWeek + toffsetFracSecs;
-  const float thisTime = thisTimeORT - deltaRX/cLight;
+  //const float thisTimeORT = thisTimeRRT + toffsetWeek*SEC_PER_WEEK + toffsetSecOfWeek + toffsetFracSecs;
+  //const float thisTime = thisTimeORT - deltaRX/cLight;
+  uint64_t mask = 0xffffffff; // This is: (1 << 32) - 1
+  uint64_t tIndexFull = (tIndexConfig & ~mask) | (tIndex & mask); // You don't want to bit-shift by 32-bits. You want to bit-mask to use the upper 32-bits from tIndexImuConfig and the lower 32-bits from tIndexImu
+  double sampleFreq = sampleFreqNum/sampleFreqDen;
+  double tRRT = tIndexFull/sampleFreq; // tIndexFull is in units of samples. Divide by sample rate to get units of seconds.
+  std::cout << "rrt seconds:" << tRRT << std::endl;
+  double tOffset = toffsetWeek*SEC_PER_WEEK + toffsetSecOfWeek + toffsetFracSecs;
+  double tORT = tRRT + tOffset; // tOffset comes from ObservablesMeasurementTime
+  double tGPS = tORT - dtRX_meters/cLight; // dtrx comes from NavigationSolution
+  double thisTime = tGPS;
 
   //NOTE: tLastProcessed is the last gps OR imu measurement processed whereas tLastImu is JUST imu
   //std::cout << "Week: " << week_ << std::endl;
@@ -280,8 +289,7 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   {  //if RBI has been calculated but the biases have not been calculated
     ba0=ba0+1/100*(imuAccelMeas+RBI*Eigen::Vector3d(0,0,9.81)); //inefficient
     bg0=bg0+1/100*imuAttRateMeas;
-    std::cout<<"calibcounter"<<counter<<std::endl;
-    std::cout<<"RBI generated, estimating biases"<<std::endl;
+    //std::cout<<"RBI generated, estimating biases"<<std::endl;
     xState<<internal_rI(0),internal_rI(1),internal_rI(2), 0,0,0, 0,0,0, ba0(0),ba0(1),ba0(2), bg0(0),bg0(1),bg0(2);
     //std::cout<<xState<<std::endl;
     counter++;
