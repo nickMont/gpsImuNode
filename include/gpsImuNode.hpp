@@ -10,6 +10,7 @@
 #include <gbx_ros_bridge_msgs/Imu.h>
 #include <gbx_ros_bridge_msgs/ImuConfig.h>
 #include <gbx_ros_bridge_msgs/NavigationSolution.h>
+#include <gbx_ros_bridge_msgs/ObservablesMeasurementTime.h>
 #include <stdint.h>
 
 #include "filter.h"
@@ -27,7 +28,8 @@ class gpsImuNode
   void attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::ConstPtr &msg);
   void imuConfigCallback(const gbx_ros_bridge_msgs::ImuConfig::ConstPtr &msg);
   void imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg);
-  void tOffCallback(const gbx_ros_bridge_msgs::NavigationSolution::ConstPtr &msg);
+  void navsolCallback(const gbx_ros_bridge_msgs::NavigationSolution::ConstPtr &msg);
+  void tOffsetCallback(const gbx_ros_bridge_msgs::ObservablesMeasurementTime::ConstPtr &msg);
   void publishOdomAndMocap();
   Eigen::Matrix<double,15,15> getFmatrixCF(const double dt, const Eigen::Vector3d fB,
     const Eigen::Vector3d omegaB, const Eigen::Matrix3d RR);
@@ -54,7 +56,7 @@ class gpsImuNode
     const::Eigen::MatrixXd vB);
   Eigen::Quaterniond rotmat2quat(const Eigen::Matrix3d RR);
   Eigen::Vector3d unit3(const Eigen::Vector3d v1);
-  void updateIMUtime(const uint64_t tIndex0, int &gpsWeek, int &gpsSec, float &gpsFracSec);
+  void updateIMUtimeRRT(const uint64_t tIndex0, int &gpsWeek, int &gpsSec, float &gpsFracSec);
 
  private:
   void PublishTransform(const geometry_msgs::Pose &pose,
@@ -78,7 +80,7 @@ class gpsImuNode
   Eigen::Matrix<double,6,6> Qimu, Rk;
 
   bool publish_tf_;
-  ros::Subscriber gps_sub_, rtkSub_, a2dSub_, imuSub_, imuConfigSub_, tOffsetSub_;
+  ros::Subscriber gps_sub_, rtkSub_, a2dSub_, imuSub_, imuConfigSub_, tOffsetSub_, navSub_;
   //geometry_msgs::PoseStamped::ConstPtr initPose_;
   geometry_msgs::PoseStamped initPose_;
   geometry_msgs::PoseStamped centerInENU;
@@ -89,10 +91,14 @@ class gpsImuNode
       imuConfigAccel, imuConfigAttRate, tMeasOffset, pi, tLastProcessed;
   bool validRTKtest, validA2Dtest, kfInit, hasAlreadyReceivedA2D, hasAlreadyReceivedRTK, hasRBI;
 
-  int32_t trefWeek, trefSecOfWeek, tIndexKconfig;
-  float trefFracSecs;
+  int32_t trefWeek, trefSecOfWeek, tIndexKconfig, toffsetWeek, toffsetSecOfWeek;
+  float trefFracSecs, toffsetFracSecs;
   uint64_t sampleFreqNum, sampleFreqDen;
   uint64_t one, imuTimeTrunc;
+  double deltaRX;
+
+  int32_t tnavsolWeek, tnavsolSecOfWeek;
+  float tnavsolFracSecs;
 
 };
 

@@ -141,7 +141,9 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
                             this, ros::TransportHints().tcpNoDelay());
   imuConfigSub_ = nh.subscribe("IMUConfig",10, &gpsImuNode::imuConfigCallback,
                             this, ros::TransportHints().tcpNoDelay());
-  tOffsetSub_ = nh.subscribe("NavigationSolution",10,&gpsImuNode::tOffCallback,
+  navSub_ = nh.subscribe("NavigationSolution",10,&gpsImuNode::navsolCallback,
+                            this, ros::TransportHints().tcpNoDelay());
+  tOffsetSub_ = nh.subscribe("ObservablesMeasurementTime",10,&gpsImuNode::tOffsetCallback,
                             this, ros::TransportHints().tcpNoDelay());
   ROS_INFO("Waiting for IMU config data, this may take a moment...");
   gbx_ros_bridge_msgs::ImuConfig::ConstPtr imuConfigMsg = ros::topic::waitForMessage<gbx_ros_bridge_msgs::ImuConfig>("IMUConfig");
@@ -159,14 +161,27 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
 }
 
 
-void gpsImuNode::tOffCallback(const gbx_ros_bridge_msgs::NavigationSolution::ConstPtr &msg)
+void gpsImuNode::navsolCallback(const gbx_ros_bridge_msgs::NavigationSolution::ConstPtr &msg)
 {
   //static int SEC_PER_WEEK = 604800;
   //tMeasOffset=msg->tOffset.week*SEC_PER_WEEK+msg->tOffset.secondsOfWeek+msg->tOffset.fractionOfSecond;
   //time offset from converting RRT to ORT
-  trefWeek = msg->tSolution.week;
-  trefFracSecs = msg->tSolution.fractionOfSecond;
-  trefSecOfWeek = msg->tSolution.secondsOfWeek;
+
+  deltaRX = msg->deltatRxMeters;
+  tnavsolWeek = msg->tSolution.week;
+  tnavsolFracSecs = msg->tSolution.fractionOfSecond;
+  tnavsolSecOfWeek = msg->tSolution.secondsOfWeek;
+}
+
+
+void gpsImuNode::tOffsetCallback(const gbx_ros_bridge_msgs::ObservablesMeasurementTime::ConstPtr &msg)
+{
+  trefWeek = msg->tMeasurement.week;
+  trefFracSecs = msg->tMeasurement.fractionOfSecond;
+  trefSecOfWeek = msg->tMeasurement.secondsOfWeek;
+  toffsetWeek = msg->tOffset.week;
+  toffsetSecOfWeek = msg->tOffset.secondsOfWeek;
+  toffsetFracSecs = msg->tOffset.fractionOfSecond;
 }
 
 
@@ -194,99 +209,31 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   static Eigen::Vector3d bg0(0,0,0);
   //gps variables
   // static const int SEC_PER_WEEK(604800);
-  static const int SF_TL = 24;
-  static const int32_t SF_T = 0x1 << SF_TL;
-  static const int32_t SF_T_MASK = SF_T - 1;
+  static const int SF_TL(24);
+  static const int32_t SF_T(0x1 << SF_TL);
+  static const int32_t SF_T_MASK(SF_T - 1);
   static const int SEC_PER_WEEK(604800);
   static const double EPSILON(1e-15);
+  static const double cLight(299792458);
   float dt;
 
   //Calculate IMU time
   int week_, secondsOfWeek_;
   float fractionOfSecond_;
   uint64_t tIndex = msg->tIndexTrunc;
-  updateIMUtime(tIndex, week_, secondsOfWeek_, fractionOfSecond_);
-  /*//setWithTruncatedSampleTime()
-  int32_t tFracIndex = tIndexKconfig;
-  //Modified slightly from gss->basetime.cpp
-  //NOTE: truncL <=> msg->tIndexTrunc;
-  //constexpr uint64_t one = 1ul; //defined at class level
-  const uint64_t trunc = one << tIndex;
-  const uint64_t truncHalf = trunc>>1;
-  const uint64_t truncM = trunc-1;
-  //ASSERT(tIndex < trunc);
-  uint64_t nWholeSeconds = trefWeek*SEC_PER_WEEK + trefSecOfWeek;
-  uint64_t samplesTimesDenom = nWholeSeconds*sampleFreqNum;
-  float fracSecsTimesNum = trefFracSecs*sampleFreqNum;
-  float fracSecsTimesNumFloor = std::floor(fracSecsTimesNum);
-  samplesTimesDenom += static_cast<uint64_t>(fracSecsTimesNumFloor);
-  uint64_t reftIndex = samplesTimesDenom/sampleFreqDen;
-  uint64_t reftIndexRem = samplesTimesDenom%sampleFreqDen;
-  float fracSamples = (reftIndexRem+(fracSecsTimesNum-fracSecsTimesNumFloor))
-    /sampleFreqDen;
-  int32_t reftFracIndex = static_cast<int32_t>(std::floor(fracSamples*SF_T + 0.5));
-  reftIndex += (reftFracIndex >> SF_TL);
-  reftFracIndex = (reftFracIndex & SF_T_MASK);
-  uint64_t fulltIndex = (reftIndex & ~truncM) | tIndex;
-  uint64_t truncReftIndex = reftIndex & truncM;
-  if(truncReftIndex >= truncHalf){
-    if(tIndex < truncReftIndex-truncHalf)
-      fulltIndex += trunc;
-  }
-  else{
-    if(tIndex > truncReftIndex+truncHalf)
-      fulltIndex -= trunc;
-  }
+  updateIMUtimeRRT(tIndex, week_, secondsOfWeek_, fractionOfSecond_);
+  const float thisTimeRRT = week_*SEC_PER_WEEK+secondsOfWeek_+fractionOfSecond_;
+  //uint64_t tFullIndex = tIndexKconfig << 32 + tIndex;
+  //float thisTimeRRT = tFullIndex*sampleFreqNum/sampleFreqDen;
+  const float thisTimeORT = thisTimeRRT + toffsetWeek*SEC_PER_WEEK + toffsetSecOfWeek + toffsetFracSecs;
+  const float thisTime = thisTimeORT - deltaRX/cLight;
 
-  //setWithSampleTime()
-  tIndex = fulltIndex;
-  const float delt = (static_cast<float>(sampleFreqDen))/sampleFreqNum;
-  // One interval is equal to sampleFreqDen seconds
-  const uint32_t nWholeIntervals = static_cast<uint32_t>(tIndex/sampleFreqNum);
-  // Whole samples remaining after an integer number of whole intervals has
-  // been removed
-  const uint32_t nWholeRemainingSamples = static_cast<uint32_t>(tIndex % sampleFreqNum);
-  const float secondsWithinFractionalInterval =
-    (static_cast<float>(nWholeRemainingSamples) +
-     (static_cast<float>(tFracIndex)/SF_T))*delt;
-  const uint32_t nWholeSecondsInWholeIntervals = nWholeIntervals*sampleFreqDen;
-  const uint32_t nWholeSecondsWithinFractionalInterval =
-  static_cast<uint32_t>(std::floor(secondsWithinFractionalInterval));
-  int week_ = nWholeSecondsInWholeIntervals/SEC_PER_WEEK;
-  int secondsOfWeek_ = (nWholeSecondsInWholeIntervals % SEC_PER_WEEK) +
-    nWholeSecondsWithinFractionalInterval;
-  float fractionOfSecond_ = secondsWithinFractionalInterval -
-    nWholeSecondsWithinFractionalInterval;
-
-  //normalize()
-  if(std::fabs(fractionOfSecond_) >= 1.0){
-    int32_t sec = static_cast<int32_t>(fractionOfSecond_);
-    secondsOfWeek_ += sec;
-    fractionOfSecond_ -= static_cast<double>(sec);
-  }
-  if(std::abs(secondsOfWeek_) >= SEC_PER_WEEK){
-    const uint64_t wholeWeeks = secondsOfWeek_/SEC_PER_WEEK; //const auto in normalize()
-    week_ += wholeWeeks;
-    secondsOfWeek_ -= (wholeWeeks*SEC_PER_WEEK);
-  }
-  if(std::fabs(fractionOfSecond_) < EPSILON)
-    fractionOfSecond_ = 0.0;
-  // Enforce non-negative fractionOfSecond_ and secondsOfWeek_; a
-  // negative week_ is fine.
-  while(fractionOfSecond_ < 0){
-    fractionOfSecond_ += 1.0;
-    --secondsOfWeek_;
-  }
-  while(secondsOfWeek_ < 0){
-    secondsOfWeek_ += SEC_PER_WEEK;
-    --week_;
-  }*/
-
-  float thisTime=week_*SEC_PER_WEEK+secondsOfWeek_+fractionOfSecond_;
   //NOTE: tLastProcessed is the last gps OR imu measurement processed whereas tLastImu is JUST imu
-  std::cout << "Week: " << week_ << std::endl;
-  std::cout << "Sec : " << secondsOfWeek_ << std::endl;
-  std::cout << "Fsec: " << fractionOfSecond_ << std::endl;
+  //std::cout << "Week: " << week_ << std::endl;
+  //std::cout << "Sec : " << secondsOfWeek_ << std::endl;
+  //std::cout << "Fsec: " << fractionOfSecond_ << std::endl;
+  //std::cout << "diff: " << thisTime - thisTimeRRT << std::endl;
+  std::cout << "tsol: " << tnavsolWeek*SEC_PER_WEEK + tnavsolFracSecs + tnavsolSecOfWeek - thisTime << std::endl;
 
   dt = thisTime-tLastImu;
   tLastImu=thisTime;
