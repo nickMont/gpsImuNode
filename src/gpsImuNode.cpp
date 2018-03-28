@@ -86,10 +86,8 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   ros::param::get(quadName + "/maxThrust",tmax);
 
   Eigen::Matrix<double,6,6> temp;
-  Qimu=1e-1*Eigen::Matrix<double,6,6>::Identity();
+  Qimu=1e-3*Eigen::Matrix<double,6,6>::Identity();
   Rk=1e-2*Eigen::Matrix<double,6,6>::Identity();
-
-  one = 1UL;
 
   //Get additional parameters for the kalkman filter
   nh.param(quadName + "/max_accel", max_accel, 2.0);
@@ -111,18 +109,21 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
           0, 0, 1;
   Pimu=Eigen::MatrixXd::Identity(15,15);
   R_G2wrw=Rwrw*Recef2enu;
+  RBI=Eigen::MatrixXd::Identity(3,3);
 
   //THIS SHOULD BE INITIALIZED IN GPSCALLBACKS
   rRefImu<<0,0,0; //location of rI_0 for imu
 
+  //Stuff for rI
+  sec_in_week = 604800;
   lastRTKtime=0;
   lastA2Dtime=0;
-  //internalQuat.resize(4);
   internalSeq=0;
 
   //Secondary to primary vector in body frame
   l_s2p<<0.195,0,0;
-  l_imu<<-0.195,0,-0.10;
+  l_imu<<-0.0975,0,-0.05;
+  l_cg2p<<0.0975,0,0.05;
 
   //First get rbi(0), then get biases(0)
   hasRBI = false;
@@ -178,94 +179,41 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
 }
 
 
-void gpsImuNode::navsolCallback(const gbx_ros_bridge_msgs::NavigationSolution::ConstPtr &msg)
-{
-  //static int SEC_PER_WEEK = 604800;
-
-  dtRX_meters = msg->deltatRxMeters;
-}
-
-
-//Get reference RRT time and measurement offset time from Observables message
-void gpsImuNode::tOffsetCallback(const gbx_ros_bridge_msgs::ObservablesMeasurementTime::ConstPtr &msg)
-{
-//  static const int SEC_PER_WEEK(604800);
-//  tmeasWeek = msg->tMeasurement.week;
-//  tmeasFracSecs = msg->tMeasurement.fractionOfSecond;
-//  tmeasSecOfWeek = msg->tMeasurement.secondsOfWeek;
-
-  toffsetWeek = msg->tOffset.week;
-  toffsetSecOfWeek = msg->tOffset.secondsOfWeek;
-  toffsetFracSecs = msg->tOffset.fractionOfSecond;
-
-//  const double tmeas = tmeasWeek*SEC_PER_WEEK + tmeasSecOfWeek + tmeasFracSecs;
-//  const double tnavsol = tnavsolWeek*SEC_PER_WEEK + tnavsolSecOfWeek + tnavsolFracSecs;
-//  const double tOffset = toffsetWeek*SEC_PER_WEEK + toffsetSecOfWeek + toffsetFracSecs;
-  //std::cout << "tsol_MEAS: " << tmeas+tOffset - tnavsol << std::endl;
-  //std::cout << "navsol: " << tnavsolWeek << " " << tnavsolSecOfWeek << " " << tnavsolFracSecs <<std::endl;
-  //std::cout << "calcd : " << tmeasWeek+toffsetWeek << " " << tmeasSecOfWeek+toffsetSecOfWeek << " " << tmeasFracSecs+toffsetFracSecs <<std::endl;
-}
-
-
-//Get upper 32 bits of tIndex counter
-void gpsImuNode::imuConfigCallback(const gbx_ros_bridge_msgs::ImuConfig::ConstPtr &msg)
-{
-  ROS_INFO("Config message received.");
-  imuConfigAccel = msg->lsbToMetersPerSecSq; //scaling to m/s2 from "non-engineering units"
-  imuConfigAttRate = msg->lsbToRadPerSec; //scaling to rad/s from "non-engineering units"
-  //imuSampleFreq = msg->sampleFreqNumerator/msg->sampleFreqDenominator/36/3600;  //samples per second
-  
-  sampleFreqNum = msg->sampleFreqNumerator;
-  sampleFreqDen = msg->sampleFreqDenominator;
-  tIndexConfig = msg->tIndexk;
-}
-
-
 void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
 {
   //Initialization variables
   static int counter=0;
+  static uint64_t imuSeq=0;
   static Eigen::Matrix<double,100,3> imuAStore=Eigen::MatrixXd::Zero(100,3);
   static Eigen::Matrix<double,100,3> imuGStore=Eigen::MatrixXd::Zero(100,3);
-  static float tLastImu=0;
+  static double tLastImu=0;
   static Eigen::Vector3d ba0=Eigen::Vector3d(0,0,0);
   static Eigen::Vector3d bg0=Eigen::Vector3d(0,0,0);
   //gps variables
   static const int SEC_PER_WEEK(604800);
   static const double cLight(299792458);
+  static const long long int mask = 0xffffffff; // This is: (1 << 32) - 1
   float dt;
 
   //Calculate IMU time
-  //int week_, secondsOfWeek_;
-  //float fractionOfSecond_;
-  uint64_t tIndex = msg->tIndexTrunc;
-  //updateIMUtimeRRT(tIndex, week_, secondsOfWeek_, fractionOfSecond_);
-  //const float thisTimeRRT = week_*SEC_PER_WEEK+secondsOfWeek_+fractionOfSecond_;
-  //uint64_t tFullIndex = tIndexConfig << 32 + tIndex;
-  //float thisTimeRRT = tFullIndex*sampleFreqNum/sampleFreqDen;
-  //std::cout << thisTimeRRT;
-  //const float thisTimeORT = thisTimeRRT + toffsetWeek*SEC_PER_WEEK + toffsetSecOfWeek + toffsetFracSecs;
-  //const float thisTime = thisTimeORT - deltaRX/cLight;
-  long long int mask = 0xffffffff; // This is: (1 << 32) - 1
-  long long int tIndexFull = (tIndexConfig & ~mask) | (tIndex & mask); // You don't want to bit-shift by 32-bits. You want to bit-mask to use the upper 32-bits from tIndexImuConfig and the lower 32-bits from tIndexImu
-  double sampleFreq = sampleFreqNum/sampleFreqDen;
-  double tRRT = tIndexFull/sampleFreq; // tIndexFull is in units of samples. Divide by sample rate to get units of seconds.
-  //std::cout << "rrt seconds:" << tRRT << std::endl;
-  //std::cout << "meas-rrt:   " << tRRT - (tmeasSecOfWeek + tmeasFracSecs) << std::endl;
-  //const double tmeas = tmeasFracSecs + tmeasWeek*SEC_PER_WEEK + tmeasSecOfWeek;
-  //const double tnavsol = tnavsolFracSecs + tnavsolWeek*SEC_PER_WEEK + tnavsolSecOfWeek;
+  const uint64_t tIndex = msg->tIndexTrunc;
+  const long long int tIndexFull = (tIndexConfig & ~mask) | (tIndex & mask); //Bit-mask, don't bit-shift
+  const double sampleFreq = sampleFreqNum/sampleFreqDen;
+  const double tRRT = tIndexFull/sampleFreq; //tIndexFull is in samples, divide by samples/s
   const double tOffset = toffsetFracSecs + toffsetWeek*SEC_PER_WEEK + toffsetSecOfWeek;
-  const double tORT = tRRT + tOffset; // tOffset comes from ObservablesMeasurementTime
-  const double tGPS = tORT - dtRX_meters/cLight; // dtrx comes from NavigationSolution
+  const double tORT = tRRT + tOffset; //tOffset comes from ObservablesMeasurementTime
+  const double tGPS = tORT - dtRX_meters/cLight; //dtrx comes from NavigationSolution
   const double thisTime = tGPS;
- 
+  std::cout.precision(17);
   dt = thisTime-tLastImu;
-  tLastImu=thisTime;
   if(dt<=1e-9)
   {
-    //std::cout << "Error: 1ns between IMU measurements" << std::endl;
+    std::cout << "Error: 1ns between IMU measurements" << std::endl;
+    //std::cout << "Time: " << thisTime-double(toffsetWeek*SEC_PER_WEEK) <<std::endl;
     return;
   }
+  //Only update last time used IF this time is accepted
+  tLastImu=thisTime;
 
   imuAccelMeas(0) = msg->acceleration[0] * imuConfigAccel;
   imuAccelMeas(1) = msg->acceleration[1] * imuConfigAccel;
@@ -282,30 +230,48 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   Rgyro=Raccel;
   imuAccelMeas = Raccel*imuAccelMeas;
   imuAttRateMeas = Rgyro*imuAttRateMeas;
+  attRateMeasOrig = imuAttRateMeas;
+  accelMeasOrig = imuAccelMeas;
   Eigen::Vector3d gamma0(xState(6),xState(7),xState(8));
-  imuAccelMeas = imuAccelMeas - updateRBIfromGamma(RBI,gamma0)*Eigen::Vector3d(0,0,9.81);
+  Eigen::Vector3d correctedImuAccelMeas = imuAccelMeas - updateRBIfromGamma(RBI,gamma0)*Eigen::Vector3d(0,0,9.81);
 
   //Run CF if calibrated
   if(isCalibrated)
   {
+    imuSeq++;
     double dtLastProc = thisTime - tLastProcessed;
-    Eigen::Matrix<double,15,15> Fmat_local = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI);
-    xState=Fmat_local*xState;
-    Fimu=Fmat_local*Fimu;
-    RBI=updateRBIfromGamma(RBI, xState.middleRows(6,3));
-    xState.middleRows(6,3)=Eigen::Vector3d::Zero();
-
-    publishOdomAndMocap();
+    if(dtLastProc>0) //Just in case a gps message is received late
+    { 
+      //propagate state nonlinearly
+      xState=fdyn(xState,dtLastProc,imuAccelMeas,imuAttRateMeas,RBI,l_imu);
+      RBI=updateRBIfromGamma(RBI, xState.middleRows(6,3));
+      xState.middleRows(6,3)=Eigen::Vector3d::Zero();
+      //Augment F matrix
+      Eigen::Matrix<double,15,15> Fmat_local = getFmatrixCF(dtLastProc,correctedImuAccelMeas,imuAttRateMeas,RBI);
+      //Fmat_local = getNumderivF(double(1e-9), dtLastProc, xState, accelMeasOrig, attRateMeasOrig,RBI, l_imu);
+      Fimu=Fmat_local*Fimu;
+      //std::cout<<"rbidet: " << RBI.determinant() << std::endl;
+      std::cout<<"xk"<<std::endl<<xState.topRows(3)<<std::endl;
+      publishOdomAndMocap();
+      tLastProcessed = thisTime;
+    }
   }else if(hasRBI)
-  {  //if RBI has been calculated but the biases have not been calculated
-    ba0=ba0+1/100*(imuAccelMeas+RBI*Eigen::Vector3d(0,0,9.81)); //inefficient
-    bg0=bg0+1/100*imuAttRateMeas;
+  { 
+    //std::cout << "bg" <<std::endl<<bg0 <<std::endl;
+    //if RBI has been calculated but the biases have not been calculated
+    ba0=ba0+0.01*(imuAccelMeas - RBI*Eigen::Vector3d(0,0,9.81)); //inefficient
+    bg0=bg0+0.01*imuAttRateMeas;
     //std::cout<<"RBI generated, estimating biases"<<std::endl;
     xState<<internal_rI(0),internal_rI(1),internal_rI(2), 0,0,0, 0,0,0, ba0(0),ba0(1),ba0(2), bg0(0),bg0(1),bg0(2);
     //std::cout<<xState<<std::endl;
     counter++;
     // Try ground calibration step for simplicity
-    if(counter>=100){isCalibrated=true;}
+    if(counter>=100)
+    {
+      isCalibrated = true;
+      tLastProcessed = thisTime;
+      std::cout << "state0" <<std::endl<<xState<<std::endl;
+    }
   }
 
 }

@@ -31,22 +31,26 @@ class gpsImuNode
   void navsolCallback(const gbx_ros_bridge_msgs::NavigationSolution::ConstPtr &msg);
   void tOffsetCallback(const gbx_ros_bridge_msgs::ObservablesMeasurementTime::ConstPtr &msg);
   void publishOdomAndMocap();
+  Eigen::Matrix<double,15,1> fdyn(const Eigen::Matrix<double,15,1> x0, const double dt,
+    const Eigen::Vector3d fB0, const Eigen::Vector3d wB0, const Eigen::Matrix3d RR,
+    const Eigen::Vector3d lAB);
+  Eigen::Matrix<double,6,1> hnonlin2antenna(const Eigen::Matrix<double,15,1> x0,
+    const Eigen::Matrix3d RR, const Eigen::Vector3d lgps);
   Eigen::Matrix<double,15,15> getFmatrixCF(const double dt, const Eigen::Vector3d fB,
     const Eigen::Vector3d omegaB, const Eigen::Matrix3d RR);
   Eigen::Matrix<double,15,6> getGammakmatrixCF(const double dt, const Eigen::Matrix3d RR);
   Eigen::Matrix<double,3,15> getHkmatrixOneAntennaCF(const Eigen::Vector3d Lab, const Eigen::Matrix3d RR);
   Eigen::Matrix<double,6,15> getHkmatrixTwoAntennaCF(const Eigen::Vector3d Limu,
     const Eigen::Vector3d Ls2p, const Eigen::Matrix3d RR);
-  Eigen::Matrix<double,6,15> getHkMatrixTwoAntennaTrueState(const Eigen::Vector3d Limu,
-    const Eigen::Vector3d Ls2p, const Eigen::Matrix3d RR);
+  Eigen::Matrix<double,6,15> getHkMatrixTwoAntennaTrueState(const Eigen::Vector3d Ls2p, const Eigen::Matrix3d RR);
   void kfCFPropagate(const double dt0, const Eigen::Matrix<double,15,15> P0,
     const Eigen::Matrix<double,15,1> x0, const Eigen::Matrix<double,15,15> F0,
     const Eigen::Matrix3d RR, const Eigen::Matrix<double,6,6> Qk,
-    Eigen::Matrix<double,15,15> Pbar, Eigen::Matrix<double,15,1> xBar);
+    Eigen::Matrix<double,15,15> &Pbar, Eigen::Matrix<double,15,1> &xBar);
   void kfCFMeasure2(const Eigen::Matrix<double,15,1> xBar, const Eigen::Vector3d drI, const Eigen::Vector3d drS2P,
     const Eigen::Matrix3d RR, const Eigen::Matrix<double,15,15> Pbar,
     const Eigen::Vector3d Limu, const Eigen::Vector3d Ls2p, const Eigen::Matrix<double,6,6> Rbar,
-    Eigen::Matrix<double,15,15> Pkp1, Eigen::Matrix<double,15,1> xkp1);
+    Eigen::Matrix<double,15,15> &Pkp1, Eigen::Matrix<double,15,1> &xkp1);
   void runCF(const double dt0);
   Eigen::Matrix3d updateRBIfromGamma(const Eigen::Matrix3d R0, const Eigen::Vector3d gamma);
   Eigen::Matrix3d hatmat(const Eigen::Vector3d v1);
@@ -56,6 +60,12 @@ class gpsImuNode
     const::Eigen::MatrixXd vB);
   Eigen::Quaterniond rotmat2quat(const Eigen::Matrix3d RR);
   Eigen::Vector3d unit3(const Eigen::Vector3d v1);
+
+  Eigen::Matrix<double,15,15> getNumderivF(const double dv, const double dt,
+    const Eigen::Matrix<double,15,1> x0,const Eigen::Vector3d fB0, const Eigen::Vector3d wB0,
+    const Eigen::Matrix3d RR, const Eigen::Vector3d lAB);
+/*  Eigen::Matrix<std::complex<double>,15,1> fdynComplex(const Eigen::Matrix<double,15,1> x0, const double dt,
+    const Eigen::Vector3d fB0, const Eigen::Vector3d wB0, const Eigen::Matrix3d RR, const Eigen::Vector3d lAB);*/
 
  private:
   void PublishTransform(const geometry_msgs::Pose &pose,
@@ -70,7 +80,7 @@ class gpsImuNode
   tf2_ros::TransformBroadcaster tf_broadcaster_;
   Eigen::Vector3d baseECEF_vector, baseENU_vector, WRW0_ecef, arenaRefCenter,
       internal_rI, internal_rC, internal_rImu, rRefImu, n_err, imuAccelMeas,
-      imuAttRateMeas, l_imu, l_s2p;
+      imuAttRateMeas, l_imu, l_s2p, l_cg2p;
 
   Eigen::Matrix3d Recef2enu, Rwrw, R_G2wrw, RBI;
   Eigen::Matrix<double,21,3> rCtildeCalib, rBCalib;
@@ -96,7 +106,7 @@ class gpsImuNode
   uint64_t sampleFreqNum, sampleFreqDen;
   uint64_t one, imuTimeTrunc;
   double dtRX_meters;
-
+  Eigen::Vector3d attRateMeasOrig, accelMeasOrig;
   int32_t tnavsolWeek, tnavsolSecOfWeek;
   float tnavsolFracSecs;
 
