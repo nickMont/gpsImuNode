@@ -215,4 +215,11 @@ Eigen::Quaterniond gpsImuNode::rotmat2quat(const Eigen::Matrix3d RR)
     return quat;	
 }
 
+/*Eigen::Matrix<double,15,1> gpsImuNode::fdyn(const Eigen::Matrix<double,15,1> x0, const double dt)
+{
+	//split x0 into component vectors, assuming [p,v,gamma,ba,bg]
+}*/
+
+
+
 }

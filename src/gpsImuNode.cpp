@@ -147,22 +147,34 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
                             this, ros::TransportHints().tcpNoDelay());
   tOffsetSub_ = nh.subscribe("ObservablesMeasurementTime",10,&gpsImuNode::tOffsetCallback,
                             this, ros::TransportHints().tcpNoDelay());
+
+  //Load IMU config data
   ROS_INFO("Waiting for IMU config data, this may take a moment...");
-  gbx_ros_bridge_msgs::ImuConfig::ConstPtr imuConfigMsg = ros::topic::waitForMessage<gbx_ros_bridge_msgs::ImuConfig>("IMUConfig");
+  gbx_ros_bridge_msgs::ImuConfig::ConstPtr imuConfigMsg = 
+        ros::topic::waitForMessage<gbx_ros_bridge_msgs::ImuConfig>("IMUConfig");
   imuConfigAccel = imuConfigMsg->lsbToMetersPerSecSq;
   imuConfigAttRate = imuConfigMsg->lsbToRadPerSec;
   sampleFreqNum = imuConfigMsg->sampleFreqNumerator;
   sampleFreqDen = imuConfigMsg->sampleFreqDenominator;  
   tIndexConfig = imuConfigMsg->tIndexk;
-  ROS_INFO("IMU configuration recorded, finishing startup.");
+  ROS_INFO("IMU configuration recorded.");
 
-  //WAIT FOR TOFFSET GOES HERE
+  //Load offset time data
+  ROS_INFO("Waiting for offset time, this may take a moment...");
+  gbx_ros_bridge_msgs::ObservablesMeasurementTime::ConstPtr toffsetMsg =
+        ros::topic::waitForMessage<gbx_ros_bridge_msgs::ObservablesMeasurementTime>("ObservablesMeasurementTime");
+  toffsetWeek = toffsetMsg->tOffset.week;
+  toffsetSecOfWeek = toffsetMsg->tOffset.secondsOfWeek;
+  toffsetFracSecs = toffsetMsg->tOffset.fractionOfSecond;
+  ROS_INFO("Time offset from RRT to ORT recorded.");
 
-  ROS_INFO("Startup complete");
+  //Get dtRX0
+  gbx_ros_bridge_msgs::NavigationSolution::ConstPtr navsolMsg = 
+        ros::topic::waitForMessage<gbx_ros_bridge_msgs::NavigationSolution>("NavigationSolution");
+  dtRX_meters = navsolMsg->deltatRxMeters;
+  ROS_INFO("Time offset from RX to GPS obtained.");
 
-  //Get initial pose
-  //initPose_ = ros::topic::waitForMessage<geometry_msgs::PoseStamped>(quadPoseTopic);
-  //geometry_msgs::PoseStamped initPose_;
+  ROS_INFO("Startup complete.");
 }
 
 
@@ -177,18 +189,18 @@ void gpsImuNode::navsolCallback(const gbx_ros_bridge_msgs::NavigationSolution::C
 //Get reference RRT time and measurement offset time from Observables message
 void gpsImuNode::tOffsetCallback(const gbx_ros_bridge_msgs::ObservablesMeasurementTime::ConstPtr &msg)
 {
-  static const int SEC_PER_WEEK(604800);
-  tmeasWeek = msg->tMeasurement.week;
-  tmeasFracSecs = msg->tMeasurement.fractionOfSecond;
-  tmeasSecOfWeek = msg->tMeasurement.secondsOfWeek;
+//  static const int SEC_PER_WEEK(604800);
+//  tmeasWeek = msg->tMeasurement.week;
+//  tmeasFracSecs = msg->tMeasurement.fractionOfSecond;
+//  tmeasSecOfWeek = msg->tMeasurement.secondsOfWeek;
 
   toffsetWeek = msg->tOffset.week;
   toffsetSecOfWeek = msg->tOffset.secondsOfWeek;
   toffsetFracSecs = msg->tOffset.fractionOfSecond;
 
-  const double tmeas = tmeasWeek*SEC_PER_WEEK + tmeasSecOfWeek + tmeasFracSecs;
-  const double tnavsol = tnavsolWeek*SEC_PER_WEEK + tnavsolSecOfWeek + tnavsolFracSecs;
-  const double tOffset = toffsetWeek*SEC_PER_WEEK + toffsetSecOfWeek + toffsetFracSecs;
+//  const double tmeas = tmeasWeek*SEC_PER_WEEK + tmeasSecOfWeek + tmeasFracSecs;
+//  const double tnavsol = tnavsolWeek*SEC_PER_WEEK + tnavsolSecOfWeek + tnavsolFracSecs;
+//  const double tOffset = toffsetWeek*SEC_PER_WEEK + toffsetSecOfWeek + toffsetFracSecs;
   //std::cout << "tsol_MEAS: " << tmeas+tOffset - tnavsol << std::endl;
   //std::cout << "navsol: " << tnavsolWeek << " " << tnavsolSecOfWeek << " " << tnavsolFracSecs <<std::endl;
   //std::cout << "calcd : " << tmeasWeek+toffsetWeek << " " << tmeasSecOfWeek+toffsetSecOfWeek << " " << tmeasFracSecs+toffsetFracSecs <<std::endl;
@@ -198,7 +210,7 @@ void gpsImuNode::tOffsetCallback(const gbx_ros_bridge_msgs::ObservablesMeasureme
 //Get upper 32 bits of tIndex counter
 void gpsImuNode::imuConfigCallback(const gbx_ros_bridge_msgs::ImuConfig::ConstPtr &msg)
 {
-  std::cout << "Config message received!" << std::endl;
+  ROS_INFO("Config message received.");
   imuConfigAccel = msg->lsbToMetersPerSecSq; //scaling to m/s2 from "non-engineering units"
   imuConfigAttRate = msg->lsbToRadPerSec; //scaling to rad/s from "non-engineering units"
   //imuSampleFreq = msg->sampleFreqNumerator/msg->sampleFreqDenominator/36/3600;  //samples per second

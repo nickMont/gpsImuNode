@@ -56,7 +56,6 @@ class gpsImuNode
     const::Eigen::MatrixXd vB);
   Eigen::Quaterniond rotmat2quat(const Eigen::Matrix3d RR);
   Eigen::Vector3d unit3(const Eigen::Vector3d v1);
-  void updateIMUtimeRRT(const uint64_t tIndex0, int &gpsWeek, int &gpsSec, float &gpsFracSec);
 
  private:
   void PublishTransform(const geometry_msgs::Pose &pose,
