@@ -14,6 +14,7 @@ void gpsImuNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBase
   if(ttime>lastRTKtime)  //only use newest time
   {
     hasAlreadyReceivedRTK=true;
+    dtGPS=ttime -lastRTKtime;
     lastRTKtime=ttime;
     if(msg->testStat > minTestStat)
       {
@@ -39,8 +40,7 @@ void gpsImuNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBase
         double dtLastProc = ttime-tLastProcessed;
         if(isCalibrated && dtLastProc>0)
         {
-          //Run CF
-          
+          //Run CF 
           Fimu = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI) * Fimu;
           //Fimu=getNumderivF(double(1e-9), dtLastProc, xState, accelMeasOrig, attRateMeasOrig,RBI, l_imu)*Fimu;
           runCF(dtLastProc);
@@ -117,6 +117,7 @@ void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::Const
     if(ttime>lastA2Dtime)  //Only use newest time. Ignore 0 messages.
     {
         hasAlreadyReceivedA2D=true;
+        dtGPS=ttime -lastA2Dtime;
         lastA2Dtime=ttime;
         if(msg->testStat > minTestStat)
         {

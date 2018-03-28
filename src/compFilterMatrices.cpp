@@ -18,7 +18,7 @@ void gpsImuNode::runCF(double dt0)
 	Eigen::Vector3d drI = internal_rI;
 	//run EKF
 	kfCFPropagate(dt0,Pimu,xState,Fimu,RBI,Qimu, pbar0,xbar0);
-	kfCFMeasure2(xbar0, drI, internal_rC, RBI, pbar0, l_imu, unit3(l_s2p), Rk, Pimu, xState);
+	kfCFMeasure2(xbar0, drI, internal_rC, RBI, pbar0, l_cg2p, l_s2p, Rk, Pimu, xState);
 }
 
 
@@ -28,7 +28,7 @@ void gpsImuNode::kfCFPropagate(const double dt0, const Eigen::Matrix<double,15,1
     const Eigen::Matrix3d RR, const Eigen::Matrix<double,6,6> Qk,
     Eigen::Matrix<double,15,15> &Pbar, Eigen::Matrix<double,15,1> &xBar)
 {
-	Eigen::Matrix<double,15,6> gammak=getGammakmatrixCF(dt0*5.0,RR); //dt for gammak is from last gps to current gps
+	Eigen::Matrix<double,15,6> gammak=getGammakmatrixCF(dtGPS,RR); //dt for gammak is from last gps to current gps
 	xBar = fdyn(x0,dt0,imuAccelMeas,imuAttRateMeas,RR,l_imu);
 	Pbar = F0*P0*F0.transpose()+gammak*Qk*gammak.transpose();
 }
@@ -37,7 +37,7 @@ void gpsImuNode::kfCFPropagate(const double dt0, const Eigen::Matrix<double,15,1
 //CF measurement step for two antennas
 void gpsImuNode::kfCFMeasure2(const Eigen::Matrix<double,15,1> xBar, const Eigen::Vector3d drI, const Eigen::Vector3d drS2P,
     const Eigen::Matrix3d RR, const Eigen::Matrix<double,15,15> Pbar,
-    const Eigen::Vector3d Limu, const Eigen::Vector3d Ls2p, const Eigen::Matrix<double,6,6> Rbar,
+    const Eigen::Vector3d Lcg2p, const Eigen::Vector3d Ls2p, const Eigen::Matrix<double,6,6> Rbar,
     Eigen::Matrix<double,15,15> &Pkp1, Eigen::Matrix<double,15,1> &xkp1)
 {
 	Eigen::Matrix<double,6,1> zk;
@@ -46,10 +46,11 @@ void gpsImuNode::kfCFMeasure2(const Eigen::Matrix<double,15,1> xBar, const Eigen
 	//error state
 	//Eigen::Matrix<double,6,15> Hk = getHkmatrixTwoAntennaCF(Limu,Ls2p,RR);
 	//true state
+	std::cout << "xbar0: " << std::endl<<xBar<<std::endl;
 	std::cout << "zk03: " <<std::endl<<zk.topRows(3) <<std::endl;
-	std::cout << "zhat: " <<std::endl<<hnonlin2antenna(xBar,RR,Ls2p).topRows(3)<<std::endl;
-	Eigen::Matrix<double,6,15> Hk = getHkMatrixTwoAntennaTrueState(unit3(Ls2p),RR);
-	Eigen::Matrix<double,6,1> zMinusZbar = zk-hnonlin2antenna(xBar,RR,Ls2p);
+	std::cout << "zhat: " <<std::endl<<hnonlin2antenna(xBar,RR,Ls2p,Lcg2p).topRows(3)<<std::endl;
+	Eigen::Matrix<double,6,15> Hk = getHkMatrixTwoAntennaTrueState(Ls2p,RR,Lcg2p);
+	Eigen::Matrix<double,6,1> zMinusZbar = zk-hnonlin2antenna(xBar,RR,Ls2p,Lcg2p);
 	Eigen::Matrix<double,6,6> Sk = Rbar+Hk*Pbar*Hk.transpose();
 	Eigen::Matrix<double,15,6> Wk = Pbar*Hk.transpose()*Sk.inverse();
 	xkp1 = xBar + Wk*zMinusZbar;
@@ -70,12 +71,11 @@ Eigen::Matrix<double,15,1> gpsImuNode::fdyn(const Eigen::Matrix<double,15,1> x0,
 	const Eigen::Vector3d ba = x0.middleRows(9,3);
 	const Eigen::Vector3d bg = x0.bottomRows(3);
 
-	//NOTE: SHOULD BE DONE WITH LCG2IMU
-
 	//Approximate propagation
 	Eigen::Vector3d xkp1 = x + dt*v;
 	Eigen::Vector3d omegaB = wB0-bg;
-	Eigen::Vector3d a = RR.transpose()*(fB0 - omegaB.cross(omegaB.cross(lAB)) - ba) - Eigen::Vector3d(0,0,9.81);
+	Eigen::Vector3d wB_x_wB_x_lAB = omegaB.cross(omegaB.cross(lAB));
+	Eigen::Vector3d a = RR.transpose()*(fB0 - wB_x_wB_x_lAB - ba) - Eigen::Vector3d(0,0,9.81);
 	Eigen::Vector3d vkp1 = v + dt*a;
 	Eigen::Vector3d gammakp1 = gamma + dt*omegaB;
 
@@ -90,13 +90,13 @@ Eigen::Matrix<double,15,1> gpsImuNode::fdyn(const Eigen::Matrix<double,15,1> x0,
 
 //True state nonlinear measurement equation
 Eigen::Matrix<double,6,1> gpsImuNode::hnonlin2antenna(const Eigen::Matrix<double,15,1> x0,
-	const Eigen::Matrix3d RR, const Eigen::Vector3d lgps)
+	const Eigen::Matrix3d RR, const Eigen::Vector3d ls2p, const Eigen::Vector3d lcg2p)
 {
 	Eigen::Matrix<double,6,1> zhat;
 
 	Eigen::Matrix3d R2 = updateRBIfromGamma(RR,x0.middleRows(6,3));
-	Eigen::Vector3d rCB = unit3(R2.transpose()*lgps);
-	zhat.topRows(3)=x0.topRows(3);
+	Eigen::Vector3d rCB = R2.transpose()*unit3(ls2p);
+	zhat.topRows(3)=x0.topRows(3)+RR.transpose()*lcg2p;
 	zhat.bottomRows(3)=rCB;
 	return zhat;
 }
@@ -117,9 +117,10 @@ Eigen::Matrix<double,15,15> gpsImuNode::getFmatrixCF(const double dt, const Eige
 	Eigen::Matrix<double,15,15> Ak = Eigen::MatrixXd::Zero(15,15);
 	Ak.block(0,3,3,3)=Eigen::Matrix3d::Identity();
 	//Take off gravity here
-	//Ak.block(3,6,3,3)=-RR.transpose()*hatmat(fB-RR.transpose()*Eigen::Vector3d(0,0,-9.81));
+	//Ak.block(3,6,3,3)=-RR.transpose()*hatmat(fB+RR.transpose()*Eigen::Vector3d(0,0,-9.81));
 	//Measurement callback has already taken off gravity
-	Ak.block(3,6,3,3) = RR.transpose()*hatmat(fB-RR*Eigen::Vector3d(0,0,9.81));
+	//Ak.block(3,6,3,3) = RR.transpose()*hatmat(fB-RR*Eigen::Vector3d(0,0,9.81));
+	Ak.block(3,6,3,3) = RR.transpose()*hatmat(fB);
 	Ak.block(3,9,3,3) = -RR.transpose();
 	Ak.block(6,6,3,3) = RR*hatmat(omegaB);
 	Ak.block(6,12,3,3) = -Eigen::MatrixXd::Identity(3,3);
@@ -163,11 +164,12 @@ Eigen::Matrix<double,6,15> gpsImuNode::getHkmatrixTwoAntennaCF(const Eigen::Vect
 
 
 Eigen::Matrix<double,6,15> gpsImuNode::getHkMatrixTwoAntennaTrueState(const Eigen::Vector3d Ls2p,
-	const Eigen::Matrix3d RR)
+	const Eigen::Matrix3d RR, const::Eigen::Vector3d Lcg2p)
 {
 	Eigen::Matrix<double,6,15> Hk = Eigen::Matrix<double,6,15>::Zero();
 	Hk.block(0,0,3,3)=Eigen::Matrix3d::Identity();
-	Hk.block(3,6,3,3)=RR.transpose()*hatmat(Ls2p);
+	Hk.block(0,6,3,3)=RR.transpose()*hatmat(Lcg2p);
+	Hk.block(3,6,3,3)=RR.transpose()*hatmat(unit3(Ls2p));
 	return Hk;
 }
 

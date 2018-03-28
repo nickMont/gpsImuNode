@@ -86,8 +86,8 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   ros::param::get(quadName + "/maxThrust",tmax);
 
   Eigen::Matrix<double,6,6> temp;
-  Qimu=1e-3*Eigen::Matrix<double,6,6>::Identity();
-  Rk=1e-2*Eigen::Matrix<double,6,6>::Identity();
+  Qimu=1e-4*Eigen::Matrix<double,6,6>::Identity();
+  Rk=1e-5*Eigen::Matrix<double,6,6>::Identity();
 
   //Get additional parameters for the kalkman filter
   nh.param(quadName + "/max_accel", max_accel, 2.0);
@@ -262,7 +262,9 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
     ba0=ba0+0.01*(imuAccelMeas - RBI*Eigen::Vector3d(0,0,9.81)); //inefficient
     bg0=bg0+0.01*imuAttRateMeas;
     //std::cout<<"RBI generated, estimating biases"<<std::endl;
-    xState<<internal_rI(0),internal_rI(1),internal_rI(2), 0,0,0, 0,0,0, ba0(0),ba0(1),ba0(2), bg0(0),bg0(1),bg0(2);
+    Eigen::Vector3d rI0;
+    rI0 = internal_rI - RBI.transpose()*l_cg2p;
+    xState<<rI0(0),rI0(1),rI0(2), 0,0,0, 0,0,0, ba0(0),ba0(1),ba0(2), bg0(0),bg0(1),bg0(2);
     //std::cout<<xState<<std::endl;
     counter++;
     // Try ground calibration step for simplicity
