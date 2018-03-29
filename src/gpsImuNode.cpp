@@ -86,8 +86,8 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   ros::param::get(quadName + "/maxThrust",tmax);
 
   Eigen::Matrix<double,6,6> temp;
-  Qimu=1e-4*Eigen::Matrix<double,6,6>::Identity();
-  Rk=1e-5*Eigen::Matrix<double,6,6>::Identity();
+  Qimu=1.0e-4*Eigen::Matrix<double,6,6>::Identity();
+  Rk=1.0e-3*Eigen::Matrix<double,6,6>::Identity();
 
   //Get additional parameters for the kalkman filter
   nh.param(quadName + "/max_accel", max_accel, 2.0);
@@ -108,6 +108,10 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
           sin(thetaWRW), cos(thetaWRW), 0,
           0, 0, 1;
   Pimu=Eigen::MatrixXd::Identity(15,15);
+  Eigen::Matrix<double,15,1> PdiagElements;
+  PdiagElements << 1.0e-2,1.0e-2,1.0e-2, 1.0e-3,1.0e-3,1.0e-3,
+      1.0e-2,1.0e-2,1.0e-2, 1.0e-1,1.0e-1,1.0e-1, 1.0e-1, 1.0e-1, 1.0e-1;
+  Pimu = PdiagElements.asDiagonal();
   R_G2wrw=Rwrw*Recef2enu;
   RBI=Eigen::MatrixXd::Identity(3,3);
 
@@ -193,7 +197,7 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   static const int SEC_PER_WEEK(604800);
   static const double cLight(299792458);
   static const long long int mask = 0xffffffff; // This is: (1 << 32) - 1
-  float dt;
+  double dt;
 
   //Calculate IMU time
   const uint64_t tIndex = msg->tIndexTrunc;
@@ -230,10 +234,9 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   Rgyro=Raccel;
   imuAccelMeas = Raccel*imuAccelMeas;
   imuAttRateMeas = Rgyro*imuAttRateMeas;
-  attRateMeasOrig = imuAttRateMeas;
-  accelMeasOrig = imuAccelMeas;
-  Eigen::Vector3d gamma0(xState(6),xState(7),xState(8));
-  Eigen::Vector3d correctedImuAccelMeas = imuAccelMeas - updateRBIfromGamma(RBI,gamma0)*Eigen::Vector3d(0,0,9.81);
+  //attRateMeasOrig = imuAttRateMeas;
+  //accelMeasOrig = imuAccelMeas;
+  //Eigen::Vector3d correctedImuAccelMeas = imuAccelMeas - updateRBIfromGamma(RBI,xState.middleRows(6,3))*Eigen::Vector3d(0,0,9.81);
 
   //Run CF if calibrated
   if(isCalibrated)
@@ -247,13 +250,19 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
       RBI=updateRBIfromGamma(RBI, xState.middleRows(6,3));
       xState.middleRows(6,3)=Eigen::Vector3d::Zero();
       //Augment F matrix
-      Eigen::Matrix<double,15,15> Fmat_local = getFmatrixCF(dtLastProc,correctedImuAccelMeas,imuAttRateMeas,RBI);
+      Eigen::Matrix<double,15,15> Fmat_local = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI);
       //Fmat_local = getNumderivF(double(1e-9), dtLastProc, xState, accelMeasOrig, attRateMeasOrig,RBI, l_imu);
       Fimu=Fmat_local*Fimu;
-      //std::cout<<"rbidet: " << RBI.determinant() << std::endl;
-      std::cout<<"xk"<<std::endl<<xState.topRows(3)<<std::endl;
+      std::cout<<"rbidet: " << RBI.determinant() << std::endl;
+      std::cout << "RBI:" << std::endl << RBI <<std::endl;
+      //std::cout<<"xk"<<std::endl<<xState.topRows(3)<<std::endl;
       publishOdomAndMocap();
       tLastProcessed = thisTime;
+      counter++;
+      if(counter%800==0)
+      {
+        RBI = orthonormalize(RBI);
+      }
     }
   }else if(hasRBI)
   { 

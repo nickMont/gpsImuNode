@@ -52,8 +52,6 @@ void gpsImuNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBase
           tLastProcessed = ttime;
           RBI = updateRBIfromGamma(RBI,xState.middleRows(6,3));
           xState.middleRows(6,3)=Eigen::Vector3d::Zero();
-          rRefImu=rRefImu+xState.topRows(3);
-          xState.topRows(3)=Eigen::Vector3d::Zero();
 
           //Check to maintain orthogonality of RBI
           /*if(internalSeq%100==0)
@@ -154,8 +152,6 @@ void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::Const
               tLastProcessed = ttime;
               RBI = updateRBIfromGamma(RBI,xState.middleRows(6,3));
               xState.middleRows(6,3)=Eigen::Vector3d::Zero();
-              rRefImu=rRefImu+xState.topRows(3);
-              xState.topRows(3)=Eigen::Vector3d::Zero();
             }
 
             //Reset to avoid publishing twice
@@ -206,6 +202,7 @@ void gpsImuNode::publishOdomAndMocap()
     //not fully populated
     //std::cout << "publisher function called" << std::endl;
     nav_msgs::Odometry localOdom_msg;
+    //std::cout << "xk:" << std::endl << xState.topRows(3) << std::endl;
     localOdom_msg.pose.pose.position.x = xState(0);
     localOdom_msg.pose.pose.position.y = xState(1);
     localOdom_msg.pose.pose.position.z = xState(2);

@@ -61,6 +61,7 @@ class gpsImuNode
     const::Eigen::MatrixXd vB);
   Eigen::Quaterniond rotmat2quat(const Eigen::Matrix3d RR);
   Eigen::Vector3d unit3(const Eigen::Vector3d v1);
+  Eigen::Matrix3d orthonormalize(Eigen::Matrix3d);
 
   Eigen::Matrix<double,15,15> getNumderivF(const double dv, const double dt,
     const Eigen::Matrix<double,15,1> x0,const Eigen::Vector3d fB0, const Eigen::Vector3d wB0,
