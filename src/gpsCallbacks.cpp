@@ -16,12 +16,9 @@ void gpsImuNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBase
     hasAlreadyReceivedRTK=true;
     dtGPS=ttime -lastRTKtime;
     lastRTKtime=ttime;
+    //If the message is accepted
     if(msg->testStat > minTestStat)
       {
-        //tnavsolWeek = msg->tSolution.week;
-        //tnavsolFracSecs = msg->tSolution.fractionOfSecond;
-        //tnavsolSecOfWeek = msg->tSolution.secondsOfWeek;
-
         validRTKtest=true;
         Eigen::Vector3d tmpvec;
         //Rotate rECEF to rI and store in internal_rI
@@ -30,36 +27,38 @@ void gpsImuNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBase
         tmpvec(2) = msg->rz + msg->rzRov - baseECEF_vector(2);
         internal_rI = Rwrw*(0.5*Recef2enu*tmpvec - n_err);
         //ROS_INFO("%f %f %f %f",msg->rx, msg->rxRov, tmpvec(0), internalPose(0)); //debugging
-      }else{validRTKtest=false;}
+      }else
+      {
+        validRTKtest=false;
+      }
 
       //If the time is new, both messages for this time have been received, and teststats are good
-      if(abs(lastRTKtime-lastA2Dtime)<.001 && validA2Dtest && validRTKtest
+    if(abs(lastRTKtime-lastA2Dtime)<.001 && validA2Dtest && validRTKtest
          && hasAlreadyReceivedRTK && hasAlreadyReceivedA2D)  //only resend pose if new
-      {
-        internalSeq++;
-        double dtLastProc = ttime-tLastProcessed;
-        if(isCalibrated && dtLastProc>0)
+    {
+      internalSeq++;
+      double dtLastProc = ttime-tLastProcessed;
+      if(isCalibrated && dtLastProc>0)
         {
-          //Run CF 
-          Fimu = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI) * Fimu;
-          //Fimu=getNumderivF(double(1e-9), dtLastProc, xState, accelMeasOrig, attRateMeasOrig,RBI, l_imu)*Fimu;
-          runCF(dtLastProc);
-          //Publish messages
-          publishOdomAndMocap();
-          P_report = Pimu;
+        //Run CF 
+        Fimu = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI) * Fimu;
+        //Fimu=getNumderivF(double(1e-9), dtLastProc, xState, accelMeasOrig, attRateMeasOrig,RBI, l_imu)*Fimu;
+        runCF(dtLastProc);
+        //Publish messages
+        publishOdomAndMocap();
+        P_report = Pimu;
+  
+        //Clean up
+        Fimu = Eigen::MatrixXd::Identity(15,15);
+        tLastProcessed = ttime;
+        RBI = updateRBIfromGamma(RBI,xState.middleRows(6,3));
+        xState.middleRows(6,3)=Eigen::Vector3d::Zero();
+      }
 
-          //Clean up
-          Fimu = Eigen::MatrixXd::Identity(15,15);
-          tLastProcessed = ttime;
-          RBI = updateRBIfromGamma(RBI,xState.middleRows(6,3));
-          xState.middleRows(6,3)=Eigen::Vector3d::Zero();
-        }
+      //Reset to avoid publishing twice
+      hasAlreadyReceivedRTK=false; hasAlreadyReceivedA2D=false; 
 
-        //Reset to avoid publishing twice
-        hasAlreadyReceivedRTK=false; hasAlreadyReceivedA2D=false; 
-
-    }//else{ lastRTKtime=msg->tSolution.secondsOfWeek+msg->tSolution.fractionOfSecond-msg->deltRSec +
-      //       msg->tSolution.week * sec_in_week - msg->deltRSec;}
+    }
   }
 }
 
@@ -151,11 +150,7 @@ void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::Const
 
           //Reset to avoid publishing twice
           hasAlreadyReceivedRTK=false; hasAlreadyReceivedA2D=false;
-        }/*else //If not, tag this as correctly timed and pass off to RTK
-        {
-          lastA2Dtime=msg->tSolution.secondsOfWeek+msg->tSolution.fractionOfSecond-msg->deltRSec +
-                        msg->tSolution.week * sec_in_week - msg->deltRSec;
-        }*/
+        }
     }
 }
 
