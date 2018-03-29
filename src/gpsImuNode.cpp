@@ -300,7 +300,7 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
     {
       isCalibrated = true;
       tLastProcessed = thisTime;
-      std::cout << "state0" <<std::endl<<xState<<std::endl;
+      //std::cout << "state0" <<std::endl<<xState<<std::endl;
     }
   }
 

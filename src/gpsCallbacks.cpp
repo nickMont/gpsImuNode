@@ -194,8 +194,18 @@ void gpsImuNode::publishOdomAndMocap()
     nav_msgs::Odometry localOdom_msg;
     //std::cout << "xk:" << std::endl << xState.topRows(3) << std::endl;
 
-//    publish P_report
+    //Eigen::Matrix<double,6,6> covXG;
+    //covXG.topLeftCorner(3,3) = P_report.topLeftCorner(3,3);
+    //covXG.bottomRightCorner(3,3) = P_report.middleRows(6,6,3,3);
+    //covXG.topRightCorner(3,3) = P_report.block(0,6,3,3);
+    //covXG.bottomLeftCorner(3,3) = P_report.block(6,0,3,3);
 
+    //Eigen::Matrix3d H;
+    //H<<1,?,?
+
+    localOdom_msg.header.stamp = ros::Time::now();
+    localOdom_msg.header.frame_id = "fcu";
+    localOdom_msg.child_frame_id = "fcu";
     localOdom_msg.pose.pose.position.x = xState(0);
     localOdom_msg.pose.pose.position.y = xState(1);
     localOdom_msg.pose.pose.position.z = xState(2);
@@ -212,6 +222,17 @@ void gpsImuNode::publishOdomAndMocap()
     localOdom_msg.twist.twist.angular.x=imuAttRateMeas(0)-xState(12);
     localOdom_msg.twist.twist.angular.y=imuAttRateMeas(1)-xState(13);
     localOdom_msg.twist.twist.angular.z=imuAttRateMeas(2)-xState(14);
+    for(int i = 0; i < 3; i++)
+      {
+        for(int j = 0; j < 3; j++)
+        {
+          localOdom_msg.pose.covariance[6*i + j] = P_report(i, j);
+          localOdom_msg.twist.covariance[6*i + j] = P_report(3+i, 3+j);
+          //Covariance of attitude rate is gaussian(IMU error) + gaussian(bias estimate)
+          localOdom_msg.twist.covariance[6*i + j + 21] = Qimu(3+i, 3+j) + P_report(12+i, 12+j);
+        }
+      }
+
     //Publish local odometry message
     localOdom_pub_.publish(localOdom_msg);
 
@@ -223,5 +244,12 @@ void gpsImuNode::publishOdomAndMocap()
     mocap_msg.header.frame_id = "fcu";
     mocap_pub_.publish(mocap_msg);
 }
+
+
+/*Eigen::Matrix3d gpsImuNode::angleAxis(const double a, const Eigen::Vector3d v)
+{
+
+}*/
+
 
 } //end namespace
