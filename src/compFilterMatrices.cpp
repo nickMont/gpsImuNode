@@ -7,14 +7,14 @@ namespace gpsimu_odom
 //Runs the CF
 void gpsImuNode::runCF(double dt0)
 {
-	std::cout<<"RUNNING CF, dt="<<dt0<<std::endl;
+	//std::cout<<"RUNNING CF, dt="<<dt0<<std::endl;
 	Eigen::Matrix<double,15,15> pbar0;
 	Eigen::Matrix<double,15,1>  xbar0;
 	//construct measurement deltas
-	//error state filter
+	//Error state filter
 	//internal_rImu = xState.topRows(3)+rRefImu;
 	//Eigen::Vector3d drI = internal_rImu - internal_rI;
-	//true state filter
+	//True state filter
 	Eigen::Vector3d drI = internal_rI;
 	//run EKF
 	kfCFPropagate(dt0,Pimu,xState,Fimu,RBI,Qimu, pbar0,xbar0);
@@ -46,16 +46,13 @@ void gpsImuNode::kfCFMeasure2(const Eigen::Matrix<double,15,1> xBar, const Eigen
 	zk.bottomRows(3)=drS2P;
 	//error state
 	//Eigen::Matrix<double,6,15> Hk = getHkmatrixTwoAntennaCF(Limu,Ls2p,RR);
-	//true state
-	//std::cout << "xbar0: " << std::endl<<xBar<<std::endl;
-	//std::cout << "zk03: " <<std::endl<<zk.topRows(3) <<std::endl;
-	//std::cout << "zhat: " <<std::endl<<hnonlin2antenna(xBar,RR,Ls2p,Lcg2p).topRows(3)<<std::endl;
+	//True state
 	Eigen::Matrix<double,6,15> Hk = getHkMatrixTwoAntennaTrueState(Ls2p,RR,Lcg2p);
 	Eigen::Matrix<double,6,1> zMinusZbar = zk-hnonlin2antenna(xBar,RR,Ls2p,Lcg2p);
 	Eigen::Matrix<double,6,6> Sk = Rbar+Hk*Pbar*Hk.transpose();
 	Eigen::Matrix<double,15,6> Wk = Pbar*Hk.transpose()*Sk.inverse();
 	xkp1 = xBar + Wk*zMinusZbar;
-	//std::cout << "xkp1" << std::endl << xkp1 <<std::endl;
+	//Joseph form update
 	Pkp1 = (Eigen::MatrixXd::Identity(15,15)-Wk*Hk)*Pbar*(Eigen::MatrixXd::Identity(15,15)-Wk*Hk).transpose()
 		+ Wk*Rbar*Wk.transpose();
 }
@@ -66,7 +63,7 @@ Eigen::Matrix<double,15,1> gpsImuNode::fdyn(const Eigen::Matrix<double,15,1> x0,
 	const Eigen::Vector3d fB0, const Eigen::Vector3d wB0, const Eigen::Matrix3d RR, const Eigen::Vector3d lAB)
 {
 	Eigen::Matrix<double,15,1> x1 = x0;
-	//split x0 into component vectors, assuming [p,v,gamma,ba,bg]
+	//split x0 into component vectors, assuming [x,v,gamma,ba,bg]
 	const Eigen::Vector3d x = x0.topRows(3);
 	const Eigen::Vector3d v = x0.middleRows(3,3);
 	const Eigen::Vector3d gamma = x0.middleRows(6,3);
@@ -81,7 +78,7 @@ Eigen::Matrix<double,15,1> gpsImuNode::fdyn(const Eigen::Matrix<double,15,1> x0,
 	Eigen::Vector3d vkp1 = v + dt*a;
 	Eigen::Vector3d gammakp1 = gamma + dt*omegaB;
 
-	//Outputs--it is assumed that biases do not vary (time constant sufficiently long such that bkp1=bk)
+	//Outputs--it is assumed that biases do not vary (time constant sufficiently large such that bkp1=bk)
 	x1.topRows(3)=xkp1;
 	x1.middleRows(3,3)=vkp1;
 	x1.middleRows(6,3)=gammakp1;
@@ -213,11 +210,14 @@ Eigen::Vector3d gpsImuNode::unit3(const Eigen::Vector3d v1)
 }
 
 
-Eigen::Matrix3d gpsImuNode::orthonormalize(Eigen::Matrix3d)
+Eigen::Matrix3d gpsImuNode::orthonormalize(const Eigen::Matrix3d inmat)
 {
 	Eigen::Matrix3d outmat;
-	
-	
+	Eigen::Matrix3d U,V;
+	Eigen::JacobiSVD<Eigen::MatrixXd> svd(inmat, Eigen::ComputeFullV | Eigen::ComputeFullU);
+	U=svd.matrixU();
+	V=svd.matrixV();
+	outmat = U*(V.transpose());
 	return outmat;
 }
 
@@ -269,6 +269,7 @@ Eigen::Quaterniond gpsImuNode::rotmat2quat(const Eigen::Matrix3d RR)
 }
 
 
+//Numerical differentiation from central difference.  Eigen doesn't like complex stepping.
 Eigen::Matrix<double,15,15> gpsImuNode::getNumderivF(const double dv, const double dt,
 	const Eigen::Matrix<double,15,1> x0,const Eigen::Vector3d fB0, const Eigen::Vector3d wB0,
 	const Eigen::Matrix3d RR, const Eigen::Vector3d lAB)

@@ -112,6 +112,7 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   PdiagElements << 1.0e-2,1.0e-2,1.0e-2, 1.0e-3,1.0e-3,1.0e-3,
       1.0e-2,1.0e-2,1.0e-2, 1.0e-1,1.0e-1,1.0e-1, 1.0e-1, 1.0e-1, 1.0e-1;
   Pimu = PdiagElements.asDiagonal();
+  P_report=Pimu;
   R_G2wrw=Rwrw*Recef2enu;
   RBI=Eigen::MatrixXd::Identity(3,3);
 
@@ -197,6 +198,7 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   static const int SEC_PER_WEEK(604800);
   static const double cLight(299792458);
   static const long long int mask = 0xffffffff; // This is: (1 << 32) - 1
+  static int warnCounter=0;
   double dt;
 
   //Calculate IMU time
@@ -219,6 +221,7 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   //Only update last time used IF this time is accepted
   tLastImu=thisTime;
 
+  //Use scale parameter
   imuAccelMeas(0) = msg->acceleration[0] * imuConfigAccel;
   imuAccelMeas(1) = msg->acceleration[1] * imuConfigAccel;
   imuAccelMeas(2) = msg->acceleration[2] * imuConfigAccel;
@@ -234,9 +237,6 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   Rgyro=Raccel;
   imuAccelMeas = Raccel*imuAccelMeas;
   imuAttRateMeas = Rgyro*imuAttRateMeas;
-  //attRateMeasOrig = imuAttRateMeas;
-  //accelMeasOrig = imuAccelMeas;
-  //Eigen::Vector3d correctedImuAccelMeas = imuAccelMeas - updateRBIfromGamma(RBI,xState.middleRows(6,3))*Eigen::Vector3d(0,0,9.81);
 
   //Run CF if calibrated
   if(isCalibrated)
@@ -245,36 +245,52 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
     double dtLastProc = thisTime - tLastProcessed;
     if(dtLastProc>0) //Just in case a gps message is received late
     { 
-      //propagate state nonlinearly
+      //Propagate state nonlinearly
       xState=fdyn(xState,dtLastProc,imuAccelMeas,imuAttRateMeas,RBI,l_imu);
       RBI=updateRBIfromGamma(RBI, xState.middleRows(6,3));
       xState.middleRows(6,3)=Eigen::Vector3d::Zero();
+      
       //Augment F matrix
       Eigen::Matrix<double,15,15> Fmat_local = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI);
       //Fmat_local = getNumderivF(double(1e-9), dtLastProc, xState, accelMeasOrig, attRateMeasOrig,RBI, l_imu);
       Fimu=Fmat_local*Fimu;
-      std::cout<<"rbidet: " << RBI.determinant() << std::endl;
-      std::cout << "RBI:" << std::endl << RBI <<std::endl;
-      //std::cout<<"xk"<<std::endl<<xState.topRows(3)<<std::endl;
+      
+      //Calculate reported covariance
+      Eigen::Matrix<double,15,6> gammak=getGammakmatrixCF(dtLastProc,RBI); //dt for gammak is from last gps to current gps
+      P_report = Fmat_local*P_report*Fmat_local.transpose() + gammak*Qimu*gammak.transpose();
+      //Publish
       publishOdomAndMocap();
+      //Cleanup
       tLastProcessed = thisTime;
+
+      //Orthonormalize every ~10s
       counter++;
       if(counter%800==0)
       {
         RBI = orthonormalize(RBI);
       }
+
+      //Warn if signal is lost
+      if( (thisTime-lastRTKtime > 0.5) || (thisTime-lastA2Dtime > 0.5) )
+      {
+        warnCounter++;
+        if(warnCounter%40==0)
+        {ROS_INFO("GPS outage warning!");}
+      }else
+      {
+        if(warnCounter!=0)
+        {ROS_INFO("GPS restored.");}
+        warnCounter=0;
+      }
     }
   }else if(hasRBI)
   { 
-    //std::cout << "bg" <<std::endl<<bg0 <<std::endl;
     //if RBI has been calculated but the biases have not been calculated
     ba0=ba0+0.01*(imuAccelMeas - RBI*Eigen::Vector3d(0,0,9.81)); //inefficient
     bg0=bg0+0.01*imuAttRateMeas;
-    //std::cout<<"RBI generated, estimating biases"<<std::endl;
     Eigen::Vector3d rI0;
     rI0 = internal_rI - RBI.transpose()*l_cg2p;
     xState<<rI0(0),rI0(1),rI0(2), 0,0,0, 0,0,0, ba0(0),ba0(1),ba0(2), bg0(0),bg0(1),bg0(2);
-    //std::cout<<xState<<std::endl;
     counter++;
     // Try ground calibration step for simplicity
     if(counter>=100)
@@ -292,7 +308,7 @@ void gpsImuNode::PublishTransform(const geometry_msgs::Pose &pose,
                                const std_msgs::Header &header,
                                const std::string &child_frame_id)
 {
-  // Publish tf
+  //Publish tf
   geometry_msgs::Vector3 translation;
   translation.x = pose.position.x;
   translation.y = pose.position.y;

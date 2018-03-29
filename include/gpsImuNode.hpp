@@ -61,7 +61,7 @@ class gpsImuNode
     const::Eigen::MatrixXd vB);
   Eigen::Quaterniond rotmat2quat(const Eigen::Matrix3d RR);
   Eigen::Vector3d unit3(const Eigen::Vector3d v1);
-  Eigen::Matrix3d orthonormalize(Eigen::Matrix3d);
+  Eigen::Matrix3d orthonormalize(const Eigen::Matrix3d inmat);
 
   Eigen::Matrix<double,15,15> getNumderivF(const double dv, const double dt,
     const Eigen::Matrix<double,15,1> x0,const Eigen::Vector3d fB0, const Eigen::Vector3d wB0,
@@ -85,7 +85,9 @@ class gpsImuNode
   Eigen::Matrix3d Recef2enu, Rwrw, R_G2wrw, RBI;
   Eigen::Matrix<double,21,3> rCtildeCalib, rBCalib;
   Eigen::Matrix<double,15,1> xState;
-  Eigen::Matrix<double,15,15> Fimu, Pimu;
+  //Pimu, Fimu are P, F matrices of EKF.  P_report is special IMU component used in mocap for publisher.
+  //Pimu sets P_report; P_report is used exclusively for reporting P.
+  Eigen::Matrix<double,15,15> Fimu, Pimu, P_report;
   Eigen::Matrix<double,6,6> Qimu, Rk;
 
   bool publish_tf_;
