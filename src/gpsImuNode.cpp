@@ -86,8 +86,11 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   ros::param::get(quadName + "/maxThrust",tmax);
 
   Eigen::Matrix<double,6,6> temp;
-  Qimu=1.0e-4*Eigen::Matrix<double,6,6>::Identity();
-  Rk=1.0e-3*Eigen::Matrix<double,6,6>::Identity();
+  Eigen::Matrix<double,6,1> P6diagElements;
+  P6diagElements << 1.0e-2,1.0e-2,1.0e-2, 1.0e-3,1.0e-3,1.0e-3;
+  Qimu=P6diagElements.asDiagonal();
+  P6diagElements << 1.0e-4,1.0e-4,1.0e-4, 1.0e-3,1.0e-3,1.0e-3;
+  Rk=P6diagElements.asDiagonal();
 
   //Get additional parameters for the kalkman filter
   nh.param(quadName + "/max_accel", max_accel, 2.0);
@@ -108,10 +111,10 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
           sin(thetaWRW), cos(thetaWRW), 0,
           0, 0, 1;
   Pimu=Eigen::MatrixXd::Identity(15,15);
-  Eigen::Matrix<double,15,1> PdiagElements;
-  PdiagElements << 1.0e-2,1.0e-2,1.0e-2, 1.0e-3,1.0e-3,1.0e-3,
+  Eigen::Matrix<double,15,1> P15diagElements;
+  P15diagElements << 1.0e-2,1.0e-2,1.0e-2, 1.0e-3,1.0e-3,1.0e-3,
       1.0e-2,1.0e-2,1.0e-2, 1.0e-1,1.0e-1,1.0e-1, 1.0e-1, 1.0e-1, 1.0e-1;
-  Pimu = PdiagElements.asDiagonal();
+  Pimu = P15diagElements.asDiagonal();
   P_report=Pimu;
   R_G2wrw=Rwrw*Recef2enu;
   RBI=Eigen::MatrixXd::Identity(3,3);
@@ -126,9 +129,9 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   internalSeq=0;
 
   //Secondary to primary vector in body frame
-  l_s2p<<0.195,0,0;
-  l_imu<<-0.0975,0,-0.05;
-  l_cg2p<<0.0975,0,0.05;
+  l_s2p<< 0.190,0,0;
+  l_imu<< -0.0884,0.0134,-0.0399;
+  l_cg2p<< 0.1013,-0.0004,0.0472;
 
   //First get rbi(0), then get biases(0)
   hasRBI = false;
