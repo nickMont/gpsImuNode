@@ -105,6 +105,7 @@ Eigen::Matrix<double,6,1> gpsImuNode::hnonlin2antenna(const Eigen::Matrix<double
 Eigen::Matrix3d gpsImuNode::updateRBIfromGamma(const Eigen::Matrix3d R0, const Eigen::Vector3d gamma)
 {
     return (Eigen::Matrix3d::Identity()+hatmat(gamma))*R0;
+    //return (rotMatFromEuler(gamma))*R0;
 }
 
 
@@ -266,6 +267,36 @@ Eigen::Quaterniond gpsImuNode::rotmat2quat(const Eigen::Matrix3d RR)
 	quat.z()=q(3);
 	quat.w()=q(0);
     return quat;	
+}
+
+
+Eigen::Matrix3d gpsImuNode::rotMatFromQuat(const Eigen::Quaterniond qq)
+{
+	const double xx=qq.x();
+	const double yy=qq.y();
+	const double zz=qq.z();
+	const double ww=qq.w();
+	Eigen::Matrix3d RR;
+  /*RR << 1-2*yy*yy-2*zz*zz, 2*xx*yy+2*ww*zz, 2*xx*zz-2*ww*yy,
+        2*xx*yy-2*ww*zz, 1-2*xx*xx-2*zz*zz, 2*yy*zz+2*ww*xx,
+        2*xx*zz+2*ww*yy, 2*yy*zz-2*ww*xx, 1-2*xx*xx-2*yy*yy; // the transposed derp*/
+	RR << 1-2*yy*yy-2*zz*zz, 2*xx*yy-2*ww*zz, 2*xx*zz+2*ww*yy,
+    	2*xx*yy+2*ww*zz, 1-2*xx*xx-2*zz*zz, 2*yy*zz-2*ww*xx,
+    	2*xx*zz-2*ww*yy, 2*yy*zz+2*ww*xx, 1-2*xx*xx-2*yy*yy;
+	return RR;
+}
+
+
+Eigen::Matrix3d gpsImuNode::rotMatFromEuler(Eigen::Vector3d ee)
+{
+  const double phi=ee(0);
+  const double theta=ee(1);
+  const double psi=ee(2);
+  Eigen::Matrix3d RR;
+  RR<<cos(theta)*cos(psi), cos(theta)*sin(psi), -sin(theta),
+      sin(phi)*sin(theta)*cos(psi)-cos(phi)*sin(psi), sin(theta)*sin(phi)*sin(psi)+cos(phi)*cos(psi), sin(phi)*cos(theta),
+      cos(phi)*sin(theta)*cos(psi)+sin(phi)*sin(psi), cos(phi)*sin(theta)*sin(psi)-sin(phi)*cos(psi), cos(phi)*cos(theta);
+  return RR;
 }
 
 

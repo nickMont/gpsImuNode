@@ -117,8 +117,11 @@ void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::Const
             //Store constrained baseline vector in I frame
             Eigen::Vector3d constrainedBaselineECEF(msg->rx,msg->ry,msg->rz);
             internal_rC = R_G2wrw*constrainedBaselineECEF;
-            //internal_rC = -1*internal_rC; //match 1->2 sign convention if pprx reports 1->2
             internal_rC=unit3(internal_rC);
+            //Eigen::Quaterniond q0 = Eigen::AngleAxisd(0, Eigen::Vector3d::UnitX())
+            //    * Eigen::AngleAxisd(0, Eigen::Vector3d::UnitY())
+            //    * Eigen::AngleAxisd(pi/2+6.2-msg->azAngle, Eigen::Vector3d::UnitZ());
+            //RBI = rotMatFromQuat(q0).transpose();
         }else
         {
             validA2Dtest=false;
@@ -189,6 +192,18 @@ void gpsImuNode::imuConfigCallback(const gbx_ros_bridge_msgs::ImuConfig::ConstPt
 //Publish local_odom and mavros mocap
 void gpsImuNode::publishOdomAndMocap()
 {
+
+    //Force orthonormality  
+    Eigen::Vector3d gamma0(xState(6),xState(7),xState(8));
+    RBI = orthonormalize(RBI);
+    updateRBIfromGamma(RBI,gamma0).transpose();
+
+    //Output counter?
+    static int counter(0);
+    counter++;
+    if(counter%10==0)
+    {std::cout<<"RBI:"<<std::endl<<RBI<<std::endl;}
+    
     //not fully populated
     //std::cout << "publisher function called" << std::endl;
     nav_msgs::Odometry localOdom_msg;
@@ -203,17 +218,17 @@ void gpsImuNode::publishOdomAndMocap()
     //Eigen::Matrix3d H;
     //H<<1,?,?
 
+    //Generate message
     localOdom_msg.header.stamp = ros::Time::now();
-    localOdom_msg.header.frame_id = "fcu";
-    localOdom_msg.child_frame_id = "fcu";
+    localOdom_msg.header.frame_id = "world";
+    localOdom_msg.child_frame_id = "world";
     localOdom_msg.pose.pose.position.x = xState(0);
     localOdom_msg.pose.pose.position.y = xState(1);
     localOdom_msg.pose.pose.position.z = xState(2);
     localOdom_msg.twist.twist.linear.x = xState(3);
     localOdom_msg.twist.twist.linear.y = xState(4);
     localOdom_msg.twist.twist.linear.z = xState(5);
-    Eigen::Vector3d gamma0(xState(6),xState(7),xState(8));
-    Eigen::Quaterniond q0 = rotmat2quat(updateRBIfromGamma(RBI,gamma0));
+    Eigen::Quaterniond q0 = rotmat2quat(RBI);
     localOdom_msg.pose.pose.orientation.x=q0.x();
     localOdom_msg.pose.pose.orientation.y=q0.y();
     localOdom_msg.pose.pose.orientation.z=q0.z();

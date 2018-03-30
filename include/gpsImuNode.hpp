@@ -56,12 +56,12 @@ class gpsImuNode
   Eigen::Matrix3d updateRBIfromGamma(const Eigen::Matrix3d R0, const Eigen::Vector3d gamma);
   Eigen::Matrix3d hatmat(const Eigen::Vector3d v1);
   Eigen::Matrix3d rotMatFromEuler(Eigen::Vector3d ee);
-  Eigen::Matrix3d rotMatFromQuat(Eigen::Quaterniond qq);
   Eigen::Matrix3d rotMatFromWahba(const Eigen::VectorXd weights, const::Eigen::MatrixXd vI,
     const::Eigen::MatrixXd vB);
   Eigen::Quaterniond rotmat2quat(const Eigen::Matrix3d RR);
   Eigen::Vector3d unit3(const Eigen::Vector3d v1);
   Eigen::Matrix3d orthonormalize(const Eigen::Matrix3d inmat);
+  Eigen::Matrix3d rotMatFromQuat(const Eigen::Quaterniond qq);
 
   Eigen::Matrix<double,15,15> getNumderivF(const double dv, const double dt,
     const Eigen::Matrix<double,15,1> x0,const Eigen::Vector3d fB0, const Eigen::Vector3d wB0,

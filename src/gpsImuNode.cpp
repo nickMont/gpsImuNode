@@ -85,13 +85,6 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   ros::param::get(quadName + "/minimumTestStat",minTestStat);
   ros::param::get(quadName + "/maxThrust",tmax);
 
-  Eigen::Matrix<double,6,6> temp;
-  Eigen::Matrix<double,6,1> P6diagElements;
-  P6diagElements << 1.0e-2,1.0e-2,1.0e-2, 1.0e-3,1.0e-3,1.0e-3;
-  Qimu=P6diagElements.asDiagonal();
-  P6diagElements << 1.0e-4,1.0e-4,1.0e-4, 1.0e-3,1.0e-3,1.0e-3;
-  Rk=P6diagElements.asDiagonal();
-
   //Get additional parameters for the kalkman filter
   nh.param(quadName + "/max_accel", max_accel, 2.0);
   nh.param(quadName + "/publish_tf", publish_tf_, true);
@@ -110,6 +103,15 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   Rwrw << cos(thetaWRW), -1*sin(thetaWRW), 0,
           sin(thetaWRW), cos(thetaWRW), 0,
           0, 0, 1;
+
+  //Covariances
+  Eigen::Matrix<double,6,6> temp;
+  Eigen::Matrix<double,6,1> P6diagElements;
+  P6diagElements << .5,.5,.5, .5,.5,.5;
+  Qimu=P6diagElements.asDiagonal();
+  P6diagElements << 1.0e-4,1.0e-4,1.0e-4, 1.0e-4,1.0e-4,1.0e-4;
+  Rk=P6diagElements.asDiagonal();
+
   Pimu=Eigen::MatrixXd::Identity(15,15);
   Eigen::Matrix<double,15,1> P15diagElements;
   P15diagElements << 1.0e-2,1.0e-2,1.0e-2, 1.0e-3,1.0e-3,1.0e-3,
@@ -236,8 +238,8 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   //NOTE1: this does not need Rpqr convention
   //NOTE2: this is hardcoded for the lynx as mounted on phoenix and company
   Eigen::Matrix3d Raccel, Rgyro;
-  Raccel<<0,-1,0, -1,0,0, 0,0,-1;
-  Rgyro=Raccel;
+  Raccel << 0,-1,0, -1,0,0, 0,0,-1;
+  Rgyro  << 0,-1,0, -1,0,0, 0,0,-1;
   imuAccelMeas = Raccel*imuAccelMeas;
   imuAttRateMeas = Rgyro*imuAttRateMeas;
 
@@ -268,10 +270,10 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
 
       //Orthonormalize every ~10s
       counter++;
-      if(counter%800==0)
+      /*if(counter%2==0)
       {
         RBI = orthonormalize(RBI);
-      }
+      }*/
 
       //Warn if signal is lost
       if( (thisTime-lastRTKtime > 0.5) || (thisTime-lastA2Dtime > 0.5) )
@@ -324,29 +326,6 @@ void gpsImuNode::PublishTransform(const geometry_msgs::Pose &pose,
   transform_stamped.transform.rotation = pose.orientation;
 
   tf_broadcaster_.sendTransform(transform_stamped);
-}
-
-
-Eigen::Matrix3d gpsImuNode::rotMatFromEuler(Eigen::Vector3d ee)
-{
-  double phi=ee(0);
-  double theta=ee(1);
-  double psi=ee(2);
-  Eigen::Matrix3d RR;
-  RR<<cos(theta)*cos(psi), cos(theta)*sin(psi), -sin(theta),
-      sin(phi)*sin(theta)*cos(psi)-cos(phi)*sin(psi), sin(theta)*sin(phi)*sin(psi)+cos(phi)*cos(psi), sin(phi)*cos(theta),
-      cos(phi)*sin(theta)*cos(psi)+sin(phi)*sin(psi), cos(phi)*sin(theta)*sin(psi)-sin(phi)*cos(psi), cos(phi)*cos(theta);
-}
-Eigen::Matrix3d gpsImuNode::rotMatFromQuat(Eigen::Quaterniond qq)
-{
-  double xx=qq.x();
-  double yy=qq.y();
-  double zz=qq.z();
-  double ww=qq.w();
-  Eigen::Matrix3d RR;
-  RR << 1-2*yy*yy-2*zz*zz, 2*xx*yy+2*ww*zz, 2*xx*zz-2*ww*yy,
-        2*xx*yy-2*ww*zz, 1-2*xx*xx-2*zz*zz, 2*yy*zz+2*ww*xx,
-        2*xx*zz+2*ww*yy, 2*yy*zz-2*ww*xx, 1-2*xx*xx-2*yy*yy;
 }
 
 
