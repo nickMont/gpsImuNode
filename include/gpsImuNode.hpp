@@ -62,6 +62,8 @@ class gpsImuNode
   Eigen::Vector3d unit3(const Eigen::Vector3d v1);
   Eigen::Matrix3d orthonormalize(const Eigen::Matrix3d inmat);
   Eigen::Matrix3d rotMatFromQuat(const Eigen::Quaterniond qq);
+  void saturateBiases(const double baMax, const double bgMax);
+  double symmetricSaturationDouble(const double inval, const double maxval);
 
   Eigen::Matrix<double,15,15> getNumderivF(const double dv, const double dt,
     const Eigen::Matrix<double,15,1> x0,const Eigen::Vector3d fB0, const Eigen::Vector3d wB0,
@@ -110,7 +112,7 @@ class gpsImuNode
   double dtRX_meters;
   Eigen::Vector3d attRateMeasOrig, accelMeasOrig;
   int32_t tnavsolWeek, tnavsolSecOfWeek;
-  double dtGPS, tnavsolFracSecs;
+  double dtGPS, tnavsolFracSecs, maxBa, maxBg;
 
 };
 

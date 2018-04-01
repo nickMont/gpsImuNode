@@ -168,6 +168,8 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   sampleFreqNum = imuConfigMsg->sampleFreqNumerator;
   sampleFreqDen = imuConfigMsg->sampleFreqDenominator;  
   tIndexConfig = imuConfigMsg->tIndexk;
+  maxBa = imuConfigAccel * 150.0;
+  maxBg = imuConfigAttRate * 200.0;
   ROS_INFO("IMU configuration recorded.");
 
   //Load offset time data

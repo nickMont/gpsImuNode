@@ -20,6 +20,9 @@ void gpsImuNode::runCF(double dt0)
 	kfCFPropagate(dt0,Pimu,xState,Fimu,RBI,Qimu, pbar0,xbar0);
 	kfCFMeasure2(xbar0, drI, internal_rC, RBI, pbar0, l_cg2p, l_s2p, Rk, Pimu, xState);
 	//std::cout << "xstate after measurement" << std::endl << xState <<std::endl;
+
+	//Test bias saturation to avoid OOM errors
+	saturateBiases(maxBa,maxBg);
 }
 
 
@@ -209,6 +212,39 @@ Eigen::Vector3d gpsImuNode::unit3(const Eigen::Vector3d v1)
 {
 	return v1/v1.norm();
 }
+
+
+double gpsImuNode::symmetricSaturationDouble(const double inval, const double maxval)
+{
+	//Handling this with an error to avoid needing an abs() each call
+	if(maxval<0)
+	{ std::cout <<"ERROR: Saturation bound is negative" << std::endl;}
+	if(inval > maxval)
+	{
+		return maxval;
+	}else if(inval < -1.0*maxval)
+	{
+		return -1.0*maxval;
+	}else
+	{
+		return inval;
+	}
+}
+
+
+void gpsImuNode::saturateBiases(const double baMax, const double bgMax)
+{
+	//Saturation
+	for(int ij=0; ij<3; ij++)
+	{
+		xState(ij+9) = symmetricSaturationDouble(xState(ij+9),baMax);
+	}
+	for(int ij=0; ij<3; ij++)
+	{
+		xState(ij+12) = symmetricSaturationDouble(xState(ij+12),bgMax);
+	}
+}
+
 
 
 Eigen::Matrix3d gpsImuNode::orthonormalize(const Eigen::Matrix3d inmat)
