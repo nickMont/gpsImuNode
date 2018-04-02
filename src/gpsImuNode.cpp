@@ -105,17 +105,20 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
           0, 0, 1;
 
   //Covariances
+  double pA,pG;
+  pA=1.0e-2;
+  pG=1.0e-3;
   Eigen::Matrix<double,6,6> temp;
   Eigen::Matrix<double,6,1> P6diagElements;
-  P6diagElements << .5,.5,.5, .5,.5,.5;
-  Qimu=P6diagElements.asDiagonal();
-  P6diagElements << 1.0e-4,1.0e-4,1.0e-4, 1.0e-4,1.0e-4,1.0e-4;
-  Rk=P6diagElements.asDiagonal();
+  P6diagElements << pA*0.000241,pA*0.000241,pA*0.000241, pG*3.0e-3,pG*3.0e-3,pG*3.0e-3;
+  Qimu = P6diagElements.asDiagonal();
+  P6diagElements << 0.000036,0.000036,0.000144, 0.000144,0.000144,0.000144;
+  Rk = P6diagElements.asDiagonal();
 
   Pimu=Eigen::MatrixXd::Identity(15,15);
   Eigen::Matrix<double,15,1> P15diagElements;
   P15diagElements << 1.0e-2,1.0e-2,1.0e-2, 1.0e-3,1.0e-3,1.0e-3,
-      1.0e-2,1.0e-2,1.0e-2, 1.0e-1,1.0e-1,1.0e-1, 1.0e-1, 1.0e-1, 1.0e-1;
+      1.0e-2,1.0e-2,1.0e-2, 1.0e-2,1.0e-2,1.0e-2, 1.0e-2, 1.0e-2, 1.0e-2;
   Pimu = P15diagElements.asDiagonal();
   P_report=Pimu;
   R_G2wrw=Rwrw*Recef2enu;
@@ -159,7 +162,7 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   tOffsetSub_ = nh.subscribe("ObservablesMeasurementTime",10,&gpsImuNode::tOffsetCallback,
                             this, ros::TransportHints().tcpNoDelay());
 
-  //Load IMU config data
+  //Load IMU config data, establish saturations
   ROS_INFO("Waiting for IMU config data, this may take a moment...");
   gbx_ros_bridge_msgs::ImuConfig::ConstPtr imuConfigMsg = 
         ros::topic::waitForMessage<gbx_ros_bridge_msgs::ImuConfig>("IMUConfig");
@@ -168,8 +171,8 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   sampleFreqNum = imuConfigMsg->sampleFreqNumerator;
   sampleFreqDen = imuConfigMsg->sampleFreqDenominator;  
   tIndexConfig = imuConfigMsg->tIndexk;
-  maxBa = imuConfigAccel * 150.0;
-  maxBg = imuConfigAttRate * 200.0;
+  maxBa = imuConfigAccel * 250.0;
+  maxBg = imuConfigAttRate * 250.0;
   ROS_INFO("IMU configuration recorded.");
 
   //Load offset time data
@@ -258,7 +261,8 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
       xState.middleRows(6,3)=Eigen::Vector3d::Zero();
       
       //Augment F matrix
-      Eigen::Matrix<double,15,15> Fmat_local = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI);
+      //Eigen::Matrix<double,15,15> Fmat_local = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI);
+      Eigen::Matrix<double,15,15> Fmat_local = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI,xState,l_imu);
       //Fmat_local = getNumderivF(double(1e-9), dtLastProc, xState, accelMeasOrig, attRateMeasOrig,RBI, l_imu);
       Fimu=Fmat_local*Fimu;
       
@@ -297,6 +301,8 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
     bg0=bg0+0.01*imuAttRateMeas;
     Eigen::Vector3d rI0;
     rI0 = internal_rI - RBI.transpose()*l_cg2p;
+    initBA = ba0;
+    initBG = bg0;
     xState<<rI0(0),rI0(1),rI0(2), 0,0,0, 0,0,0, ba0(0),ba0(1),ba0(2), bg0(0),bg0(1),bg0(2);
     counter++;
     // Try ground calibration step for simplicity

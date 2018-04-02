@@ -35,6 +35,7 @@ void gpsImuNode::kfCFPropagate(const double dt0, const Eigen::Matrix<double,15,1
 	Eigen::Matrix<double,15,6> gammak=getGammakmatrixCF(dtGPS,RR); //dt for gammak is from last gps to current gps
 	xBar = fdyn(x0,dt0,imuAccelMeas,imuAttRateMeas,RR,l_imu);
 	Pbar = F0*P0*F0.transpose()+gammak*Qk*gammak.transpose();
+	//std::cout << Pbar <<std::endl << std::endl<<std::endl;
 }
 
 
@@ -89,8 +90,113 @@ Eigen::Matrix<double,15,1> gpsImuNode::fdyn(const Eigen::Matrix<double,15,1> x0,
 	return x1;
 }
 
+//Dynamic nonlinear propagation for IMU data. NOTE: This handles noise and noise rate for gyro/accel
+Eigen::Matrix<double,15,1> gpsImuNode::fdynSPKF(const Eigen::Matrix<double,15,1> x0, const double dt,
+	const Eigen::Vector3d fB0, const Eigen::Matrix<double,12,1> vk, const Eigen::Vector3d wB0,
+	const Eigen::Matrix3d RR, const Eigen::Vector3d lAB)
+{
+	Eigen::Matrix<double,15,1> x1 = x0;
+	//split x0 into component vectors, assuming [x,v,gamma,ba,bg]
+	const Eigen::Vector3d x = x0.topRows(3);
+	const Eigen::Vector3d v = x0.middleRows(3,3);
+	const Eigen::Vector3d gamma = x0.middleRows(6,3);
+	const Eigen::Vector3d ba = x0.middleRows(9,3);
+	const Eigen::Vector3d bg = x0.bottomRows(3);
 
-//True state nonlinear measurement equation
+	//Approximate propagation
+	Eigen::Vector3d xkp1 = x + dt*v;
+	Eigen::Vector3d omegaB = wB0-bg;
+	Eigen::Vector3d wB_x_wB_x_lAB = omegaB.cross(omegaB.cross(lAB));
+	Eigen::Vector3d a = RR.transpose()*(fB0 - wB_x_wB_x_lAB - ba) - Eigen::Vector3d(0,0,9.81);
+	Eigen::Vector3d vkp1 = v + dt*a;
+	Eigen::Vector3d gammakp1 = gamma + dt*omegaB;
+
+	//Outputs--it is assumed that biases do not vary (time constant sufficiently large such that bkp1=bk)
+	x1.topRows(3)=xkp1;
+	x1.middleRows(3,3)=vkp1;
+	x1.middleRows(6,3)=gammakp1;
+
+	return x1;
+}
+
+//True state nonlinear measurement equation. lcg2p assumed a unit3 already
+Eigen::Matrix<double,6,1> gpsImuNode::hnonlinSPKF(const Eigen::Matrix<double,15,1> x0,
+	const Eigen::Matrix3d RR, const Eigen::Vector3d ls2p, const Eigen::Vector3d lcg2p,
+	const Eigen::Matrix<double,6,1> vk)
+{
+	Eigen::Matrix<double,6,1> zhat;
+
+	Eigen::Matrix3d R2 = updateRBIfromGamma(RR,x0.middleRows(6,3));
+	Eigen::Vector3d rCB = R2.transpose()*unit3(ls2p+vk.bottomRows(3));
+	zhat.topRows(3)=x0.topRows(3)+R2.transpose()*lcg2p+vk.topRows(3);
+	zhat.bottomRows(3)=rCB;
+	return zhat;
+}
+
+
+//Hardcoding matrix sizes instead of doing dynamic resizing to preserve speed
+void gpsImuNode::spkfPropagate15(const Eigen::Matrix<double,15,1> x0, const Eigen::Matrix<double,15,15> P0,
+	const Eigen::Matrix<double,12,12> Q, const double dt, const Eigen::Vector3d fB0, const Eigen::Matrix<double,12,1> vk,
+	const Eigen::Vector3d wB0, const Eigen::Matrix3d RR, const Eigen::Vector3d lAB, Eigen::Matrix<double,15,15> &Pkp1,
+	Eigen::Matrix<double,15,1> &xkp1)
+{
+	static const double epsilon(1.0e-8);
+	static const double alpha(1.0e-3);
+	static const double beta(2.0);
+	static const double kappa(0.0);
+	static const int nn(27);
+	static const double lambda = (alpha*alpha)*(kappa+nn)-nn;
+	static const double w_mean_center(lambda/(nn+lambda));
+	static const double w_mean_reg(1/(2*nn+lambda));
+	static const double w_cov_center(w_mean_center+1.0-alpha*alpha+beta);
+	static const double w_cov_reg(w_mean_reg);
+	static const double cp(sqrt(nn+lambda));
+	Eigen::Matrix<double,27,27> Paug;
+	Eigen::Matrix<double,15,1> xBar, storeDum;
+	Eigen::Matrix<double,15,55> xStore;
+	Eigen::Matrix<double,27,27> cholP; // compute the Cholesky decomposition of A
+	Paug.topLeftCorner(15,15)=P0; Paug.bottomRightCorner(12,12)=Q;
+	cholP = (Paug.llt().matrixL()).transpose();
+	xBar = fdynSPKF(x0, dt, fB0, Eigen::Matrix<double,12,1>::Zero(), wB0, RR, lAB);
+	xStore.col(0) = xBar;
+	Eigen::Matrix<double,27,1> xAug, x_sp;
+	xAug.topRows(15) = x0;
+	xAug.bottomRows(12)=Eigen::Matrix<double,15,1>::Zero();
+	xBar = w_mean_center*xBar;
+	int colno;
+	double spSign; //This can be an int (will only have values on +-1), I'm just being careful to avoid implicit conversions.
+
+	//Propagate through sigma points
+	spSign=1.0;
+	for(int ij=0; ij<2*nn; ij++)
+	{
+		colno = ij%nn;
+		if(ij>=nn)
+		{
+			spSign=-1.0;
+		}
+		x_sp = xAug + cp*spSign*cholP.col(colno);
+		storeDum = fdynSPKF(x_sp.topRows(15), dt, fB0, x_sp.bottomRows(12), wB0, RR, lAB);
+		xStore.col(ij+1) = storeDum;
+		xBar = xBar + w_mean_reg*storeDum;
+	}
+
+	//Recombine for covariance
+	Eigen::Matrix<double,15,15> Pbarkp1;
+	Pbarkp1 = w_cov_center*(xStore.col(0)-xBar)*((xStore.col(0)-xBar).transpose());
+	for(int ij=0; ij<2*nn; ij++)
+	{
+		Pbarkp1 = Pbarkp1 + w_cov_reg*(xStore.col(ij)-xBar)*((xStore.col(ij)-xBar).transpose());
+	}
+
+	//outputs
+	xkp1 = xBar;
+	Pkp1 = Pbarkp1;
+	return;
+}
+
+
+//True state nonlinear measurement equation. lcg2p assumed a unit3 already
 Eigen::Matrix<double,6,1> gpsImuNode::hnonlin2antenna(const Eigen::Matrix<double,15,1> x0,
 	const Eigen::Matrix3d RR, const Eigen::Vector3d ls2p, const Eigen::Vector3d lcg2p)
 {
@@ -98,7 +204,7 @@ Eigen::Matrix<double,6,1> gpsImuNode::hnonlin2antenna(const Eigen::Matrix<double
 
 	Eigen::Matrix3d R2 = updateRBIfromGamma(RR,x0.middleRows(6,3));
 	Eigen::Vector3d rCB = R2.transpose()*unit3(ls2p);
-	zhat.topRows(3)=x0.topRows(3)+RR.transpose()*lcg2p;
+	zhat.topRows(3)=x0.topRows(3)+R2.transpose()*lcg2p;
 	zhat.bottomRows(3)=rCB;
 	return zhat;
 }
@@ -125,11 +231,30 @@ Eigen::Matrix<double,15,15> gpsImuNode::getFmatrixCF(const double dt, const Eige
 	//Ak.block(3,6,3,3) = RR.transpose()*hatmat(fB-RR*Eigen::Vector3d(0,0,9.81));
 	Ak.block(3,6,3,3) = RR.transpose()*hatmat(fB);
 	Ak.block(3,9,3,3) = -RR.transpose();
-	Ak.block(6,6,3,3) = RR*hatmat(omegaB);
+	//Ak.block(6,6,3,3) = RR*hatmat(omegaB);
+	//Ak.block(6,6,3,3) = hatmat(omegaB);
 	Ak.block(6,12,3,3) = -Eigen::MatrixXd::Identity(3,3);
 	return Eigen::Matrix<double,15,15>::Identity() + dt*Ak;
 }
 
+
+//Generates F matrix from imu data
+Eigen::Matrix<double,15,15> gpsImuNode::getFmatrixCF(const double dt, const Eigen::Vector3d fB,
+	const Eigen::Vector3d omegaB, const Eigen::Matrix3d RR, const Eigen::Matrix<double,15,1> state0,
+	const Eigen::Vector3d Lab)
+{
+	//A is continuous time, Fk is discrete time
+	Eigen::Matrix<double,15,15> Ak = Eigen::MatrixXd::Zero(15,15);
+	Ak.block(0,3,3,3)=Eigen::Matrix3d::Identity();
+	const Eigen::Matrix3d R2 = updateRBIfromGamma(RR,state0.middleRows(6,3));
+	const Eigen::Vector3d wB = omegaB - state0.bottomRows(3);
+	//Take off gravity here
+	Ak.block(3,6,3,3) = RR.transpose()*hatmat(fB - state0.middleRows(9,3) - wB.cross(wB.cross(Lab)));
+	//Measurement callback has already taken off gravity
+	Ak.block(3,9,3,3) = -R2.transpose();
+	Ak.block(6,12,3,3) = -Eigen::MatrixXd::Identity(3,3);
+	return Eigen::Matrix<double,15,15>::Identity() + dt*Ak;
+}
 
 //Grabs noise matrix
 Eigen::Matrix<double,15,6> gpsImuNode::getGammakmatrixCF(const double dt, const Eigen::Matrix3d RR)

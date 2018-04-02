@@ -41,7 +41,8 @@ void gpsImuNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBase
       if(isCalibrated && dtLastProc>0)
         {
         //Run CF 
-        Fimu = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI) * Fimu;
+        //Fimu = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI) * Fimu;
+        Fimu = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI,xState,l_imu) * Fimu;
         //Fimu=getNumderivF(double(1e-9), dtLastProc, xState, accelMeasOrig, attRateMeasOrig,RBI, l_imu)*Fimu;
         runCF(dtLastProc);
         //Publish messages
@@ -136,7 +137,8 @@ void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::Const
           if(isCalibrated && dtLastProc>0)
             {
             //Run CF
-            Fimu = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI) * Fimu;
+            //Fimu = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI) * Fimu;
+            Fimu = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI,xState,l_imu) * Fimu;
             //Fimu=getNumderivF(double(1e-9), dtLastProc, xState, accelMeasOrig, attRateMeasOrig,RBI, l_imu)*Fimu;
             runCF(dtLastProc);
             P_report = Pimu;
@@ -198,11 +200,17 @@ void gpsImuNode::publishOdomAndMocap()
     RBI = orthonormalize(RBI);
     updateRBIfromGamma(RBI,gamma0).transpose();
 
-    //Output counter?
-    static int counter(0);
-    counter++;
-    if(counter%10==0)
-    {std::cout<<"RBI:"<<std::endl<<RBI<<std::endl;}
+    //std::cout << "Accelbias:" <<std::endl;
+    //std::cout << xState(9) << " " << xState(10) << " " << xState(11) << std::endl;
+
+    //std::cout << "Gyrobias:" <<std::endl;
+    //std::cout << xState(12) << " " << xState(13) << " " << xState(14) << std::endl;
+
+    //Output counter
+    //static int counter(0);
+    //counter++;
+    //if(counter%10==0)
+    //{std::cout<<"RBI:"<<std::endl<<RBI<<std::endl;}
     
     //not fully populated
     //std::cout << "publisher function called" << std::endl;
@@ -237,7 +245,7 @@ void gpsImuNode::publishOdomAndMocap()
     localOdom_msg.twist.twist.angular.x=imuAttRateMeas(0)-xState(12);
     localOdom_msg.twist.twist.angular.y=imuAttRateMeas(1)-xState(13);
     localOdom_msg.twist.twist.angular.z=imuAttRateMeas(2)-xState(14);
-    for(int i = 0; i < 3; i++)
+    /*for(int i = 0; i < 3; i++)
       {
         for(int j = 0; j < 3; j++)
         {
@@ -246,7 +254,7 @@ void gpsImuNode::publishOdomAndMocap()
           //Covariance of attitude rate is gaussian(IMU error) + gaussian(bias estimate)
           localOdom_msg.twist.covariance[6*i + j + 21] = Qimu(3+i, 3+j) + P_report(12+i, 12+j);
         }
-      }
+      }*/
 
     //Publish local odometry message
     localOdom_pub_.publish(localOdom_msg);

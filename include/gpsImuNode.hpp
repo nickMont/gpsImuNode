@@ -38,6 +38,9 @@ class gpsImuNode
     const Eigen::Matrix3d RR, const Eigen::Vector3d ls2p, const Eigen::Vector3d lcg2p);
   Eigen::Matrix<double,15,15> getFmatrixCF(const double dt, const Eigen::Vector3d fB,
     const Eigen::Vector3d omegaB, const Eigen::Matrix3d RR);
+  Eigen::Matrix<double,15,15> getFmatrixCF(const double dt, const Eigen::Vector3d fB,
+    const Eigen::Vector3d omegaB, const Eigen::Matrix3d RR, const Eigen::Matrix<double,15,1> state0,
+    const Eigen::Vector3d Lab);
   Eigen::Matrix<double,15,6> getGammakmatrixCF(const double dt, const Eigen::Matrix3d RR);
   Eigen::Matrix<double,3,15> getHkmatrixOneAntennaCF(const Eigen::Vector3d Lab, const Eigen::Matrix3d RR);
   Eigen::Matrix<double,6,15> getHkmatrixTwoAntennaCF(const Eigen::Vector3d Limu,
@@ -64,6 +67,18 @@ class gpsImuNode
   Eigen::Matrix3d rotMatFromQuat(const Eigen::Quaterniond qq);
   void saturateBiases(const double baMax, const double bgMax);
   double symmetricSaturationDouble(const double inval, const double maxval);
+
+
+  Eigen::Matrix<double,6,1> hnonlinSPKF(const Eigen::Matrix<double,15,1> x0,
+    const Eigen::Matrix3d RR, const Eigen::Vector3d ls2p, const Eigen::Vector3d lcg2p,
+    const Eigen::Matrix<double,6,1> vk);
+  Eigen::Matrix<double,15,1> fdynSPKF(const Eigen::Matrix<double,15,1> x0, const double dt,
+    const Eigen::Vector3d fB0, const Eigen::Matrix<double,12,1> vk, const Eigen::Vector3d wB0,
+    const Eigen::Matrix3d RR, const Eigen::Vector3d lAB);
+  void spkfPropagate15(const Eigen::Matrix<double,15,1> x0, const Eigen::Matrix<double,15,15> P0,
+    const Eigen::Matrix<double,12,12> Q, const double dt, const Eigen::Vector3d fB0, const Eigen::Matrix<double,12,1> vk,
+    const Eigen::Vector3d wB0, const Eigen::Matrix3d RR, const Eigen::Vector3d lAB, Eigen::Matrix<double,15,15> &Pkp1,
+    Eigen::Matrix<double,15,1> &xkp1);
 
   Eigen::Matrix<double,15,15> getNumderivF(const double dv, const double dt,
     const Eigen::Matrix<double,15,1> x0,const Eigen::Vector3d fB0, const Eigen::Vector3d wB0,
@@ -110,7 +125,7 @@ class gpsImuNode
   uint64_t sampleFreqNum, sampleFreqDen;
   uint64_t one, imuTimeTrunc;
   double dtRX_meters;
-  Eigen::Vector3d attRateMeasOrig, accelMeasOrig;
+  Eigen::Vector3d attRateMeasOrig, accelMeasOrig, initBA, initBG;
   int32_t tnavsolWeek, tnavsolSecOfWeek;
   double dtGPS, tnavsolFracSecs, maxBa, maxBg;
 
