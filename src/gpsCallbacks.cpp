@@ -40,20 +40,20 @@ void gpsImuNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBase
       double dtLastProc = ttime-tLastProcessed;
       if(isCalibrated && dtLastProc>0)
         {
-        //Run CF 
+        /*//Run CF 
         //Fimu = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI) * Fimu;
         Fimu = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI,xState,l_imu) * Fimu;
         //Fimu=getNumderivF(double(1e-9), dtLastProc, xState, accelMeasOrig, attRateMeasOrig,RBI, l_imu)*Fimu;
-        runCF(dtLastProc);
+        runCF(dtLastProc);*/
+        runUKF(dtLastProc);
+
         //Publish messages
+        P_report = Pimu;      
         publishOdomAndMocap();
-        P_report = Pimu;
   
         //Clean up
         Fimu = Eigen::MatrixXd::Identity(15,15);
         tLastProcessed = ttime;
-        RBI = updateRBIfromGamma(RBI,xState.middleRows(6,3));
-        xState.middleRows(6,3)=Eigen::Vector3d::Zero();
       }
 
       //Reset to avoid publishing twice
@@ -136,21 +136,20 @@ void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::Const
           double dtLastProc = ttime-tLastProcessed;
           if(isCalibrated && dtLastProc>0)
             {
-            //Run CF
+            /*//Run CF
             //Fimu = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI) * Fimu;
             Fimu = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI,xState,l_imu) * Fimu;
             //Fimu=getNumderivF(double(1e-9), dtLastProc, xState, accelMeasOrig, attRateMeasOrig,RBI, l_imu)*Fimu;
-            runCF(dtLastProc);
-            P_report = Pimu;
+            runCF(dtLastProc);*/
+            runUKF(dtLastProc);
   
             //Publish messages
+            P_report = Pimu;      
             publishOdomAndMocap();
 
             //Clean up
             Fimu = Eigen::MatrixXd::Identity(15,15);
             tLastProcessed = ttime;
-            RBI = updateRBIfromGamma(RBI,xState.middleRows(6,3));
-            xState.middleRows(6,3)=Eigen::Vector3d::Zero();
           }
 
           //Reset to avoid publishing twice
@@ -195,10 +194,10 @@ void gpsImuNode::imuConfigCallback(const gbx_ros_bridge_msgs::ImuConfig::ConstPt
 void gpsImuNode::publishOdomAndMocap()
 {
 
-    //Force orthonormality  
-    Eigen::Vector3d gamma0(xState(6),xState(7),xState(8));
+    //Update rotation matrix and force orthonormality  
+    RBI=updateRBIfromGamma(RBI, xState.middleRows(6,3));
+    xState.middleRows(6,3)=Eigen::Vector3d::Zero();
     RBI = orthonormalize(RBI);
-    updateRBIfromGamma(RBI,gamma0).transpose();
 
     //std::cout << "Accelbias:" <<std::endl;
     //std::cout << xState(9) << " " << xState(10) << " " << xState(11) << std::endl;

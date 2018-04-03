@@ -5,6 +5,7 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <nav_msgs/Odometry.h>
 #include <Eigen/Geometry>
+#include <Eigen/Eigenvalues>
 #include <gbx_ros_bridge_msgs/SingleBaselineRTK.h>
 #include <gbx_ros_bridge_msgs/Attitude2D.h>
 #include <gbx_ros_bridge_msgs/Imu.h>
@@ -12,6 +13,7 @@
 #include <gbx_ros_bridge_msgs/NavigationSolution.h>
 #include <gbx_ros_bridge_msgs/ObservablesMeasurementTime.h>
 #include <stdint.h>
+#include <cmath>
 
 #include "filter.h"
 #include "filterTW.h"
@@ -69,20 +71,24 @@ class gpsImuNode
   double symmetricSaturationDouble(const double inval, const double maxval);
 
 
+  void spkfPropagate15(const Eigen::Matrix<double,15,1> x0, const Eigen::Matrix<double,15,15> P0,
+    const Eigen::Matrix<double,12,12> Q, const double dt, const Eigen::Vector3d fB0, const Eigen::Vector3d wB0,
+    const Eigen::Matrix3d RR, const Eigen::Vector3d lAB, Eigen::Matrix<double,15,15> &Pkp1, Eigen::Matrix<double,15,1> &xkp1);
+  void spkfMeasure6(const Eigen::Matrix<double,15,1> x0, const Eigen::Matrix<double,15,15> P0,
+    const Eigen::Matrix<double,6,6> R, const Eigen::Vector3d rI_measurement, const Eigen::Vector3d rCu_measurement,
+    const Eigen::Matrix3d RR, const Eigen::Vector3d lcg2p, const Eigen::Vector3d ls2p,
+    Eigen::Matrix<double,15,15> &Pkp1, Eigen::Matrix<double,15,1> &xkp1);
+  Eigen::Matrix<double,15,15> getNumderivF(const double dv, const double dt,
+    const Eigen::Matrix<double,15,1> x0,const Eigen::Vector3d fB0, const Eigen::Vector3d wB0,
+    const Eigen::Matrix3d RR, const Eigen::Vector3d lAB);
   Eigen::Matrix<double,6,1> hnonlinSPKF(const Eigen::Matrix<double,15,1> x0,
     const Eigen::Matrix3d RR, const Eigen::Vector3d ls2p, const Eigen::Vector3d lcg2p,
     const Eigen::Matrix<double,6,1> vk);
   Eigen::Matrix<double,15,1> fdynSPKF(const Eigen::Matrix<double,15,1> x0, const double dt,
     const Eigen::Vector3d fB0, const Eigen::Matrix<double,12,1> vk, const Eigen::Vector3d wB0,
     const Eigen::Matrix3d RR, const Eigen::Vector3d lAB);
-  void spkfPropagate15(const Eigen::Matrix<double,15,1> x0, const Eigen::Matrix<double,15,15> P0,
-    const Eigen::Matrix<double,12,12> Q, const double dt, const Eigen::Vector3d fB0, const Eigen::Matrix<double,12,1> vk,
-    const Eigen::Vector3d wB0, const Eigen::Matrix3d RR, const Eigen::Vector3d lAB, Eigen::Matrix<double,15,15> &Pkp1,
-    Eigen::Matrix<double,15,1> &xkp1);
+  void runUKF(double dt0); 
 
-  Eigen::Matrix<double,15,15> getNumderivF(const double dv, const double dt,
-    const Eigen::Matrix<double,15,1> x0,const Eigen::Vector3d fB0, const Eigen::Vector3d wB0,
-    const Eigen::Matrix3d RR, const Eigen::Vector3d lAB);
 
  private:
   void PublishTransform(const geometry_msgs::Pose &pose,
@@ -114,20 +120,21 @@ class gpsImuNode
   geometry_msgs::PoseStamped centerInENU;
   //geometry_msgs::PoseStamped initPose_;
   Eigen::Quaterniond internalQuat, quaternionSetpoint;
-  int centerFlag, internalSeq, sec_in_week;
+  int centerFlag, internalSeq;
   double lastRTKtime, lastA2Dtime, minTestStat, max_accel, throttleSetpoint, throttleMax,
       imuConfigAccel, imuConfigAttRate, tMeasOffset, pi, tLastProcessed;
   bool validRTKtest, validA2Dtest, kfInit, hasAlreadyReceivedA2D, hasAlreadyReceivedRTK, hasRBI, isCalibrated;
 
   long long int tIndexConfig;
+  Eigen::Matrix<double,12,12> Qk12;
   uint32_t tmeasWeek, tmeasSecOfWeek, toffsetWeek, toffsetSecOfWeek;
-  double tmeasFracSecs, toffsetFracSecs;
+  double tmeasFracSecs, toffsetFracSecs, tauG, tauA;
   uint64_t sampleFreqNum, sampleFreqDen;
   uint64_t one, imuTimeTrunc;
   double dtRX_meters;
   Eigen::Vector3d attRateMeasOrig, accelMeasOrig, initBA, initBG;
   int32_t tnavsolWeek, tnavsolSecOfWeek;
-  double dtGPS, tnavsolFracSecs, maxBa, maxBg;
+  double dtGPS, tnavsolFracSecs, maxBa, maxBg, sec_in_week;
 
 };
 

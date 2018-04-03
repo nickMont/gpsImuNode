@@ -105,6 +105,8 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
           0, 0, 1;
 
   //Covariances
+  tauA=100.0;
+  tauG=100.0;
   double pA,pG;
   pA=1.0e-2;
   pG=1.0e-3;
@@ -114,11 +116,28 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   Qimu = P6diagElements.asDiagonal();
   P6diagElements << 0.000036,0.000036,0.000144, 0.000144,0.000144,0.000144;
   Rk = P6diagElements.asDiagonal();
+  Qk12 = Eigen::Matrix<double,12,12>::Zero();
+
+  //12x12 Q covariance
+  const double dtIMU=1.0/73.25; //from (rostopic hz /phoenix/imu -r 10)/10
+  const double alphaA = exp(-dtIMU/tauA);
+  const double gScale = 9.81/1000.0;
+  const double thetaScale = pi/180.0;
+  const double alphaG = exp(-dtIMU/tauG);
+  Qk12.topLeftCorner(3,3) = thetaScale*thetaScale*25.0e-4/dtIMU*Eigen::Matrix3d::Identity();
+  Qk12.block(3,3,3,3) = pow(thetaScale*100.0/3600.0,2)*(1.-alphaG*alphaG)*Eigen::Matrix3d::Identity();
+  Qk12.block(6,6,3,3) = gScale*gScale*0.001/dtIMU*Eigen::Matrix3d::Identity();
+  Qk12.bottomRightCorner(3,3) = pow(gScale*100.0,2)*(1.-alphaA*alphaA)*Eigen::Matrix3d::Identity();
+
+  Qk12.topLeftCorner(3,3) = pow(0.1*pi/180/sqrt(dtIMU),2)*Eigen::Matrix3d::Identity(); //see datasheet
+  Qk12.block(6,6,3,3) = pow(9.81*1/1.0e6/sqrt(dtIMU),2)*Eigen::Matrix3d::Identity(); //see datasheet
+  Qk12.block(3,3,3,3) = pow(thetaScale*100.0/360.0,2)*(1.-alphaG*alphaG)*Eigen::Matrix3d::Identity(); //random tests
+  Qk12.bottomRightCorner(3,3) = pow(gScale*1000.0,2)*(1.-alphaA*alphaA)*Eigen::Matrix3d::Identity(); //random tests
 
   Pimu=Eigen::MatrixXd::Identity(15,15);
   Eigen::Matrix<double,15,1> P15diagElements;
-  P15diagElements << 1.0e-2,1.0e-2,1.0e-2, 1.0e-3,1.0e-3,1.0e-3,
-      1.0e-2,1.0e-2,1.0e-2, 1.0e-2,1.0e-2,1.0e-2, 1.0e-2, 1.0e-2, 1.0e-2;
+  P15diagElements << 1.0e-4,1.0e-4,1.0e-4, 1.0e-6,1.0e-6,1.0e-6,
+      1.0e-5,1.0e-5,1.0e-5, 1.0e-4,1.0e-4,1.0e-4, 1.0e-5, 1.0e-5, 1.0e-5;
   Pimu = P15diagElements.asDiagonal();
   P_report=Pimu;
   R_G2wrw=Rwrw*Recef2enu;
@@ -128,7 +147,7 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   rRefImu<<0,0,0; //location of rI_0 for imu
 
   //Stuff for rI
-  sec_in_week = 604800;
+  sec_in_week = 604800.0;
   lastRTKtime=0;
   lastA2Dtime=0;
   internalSeq=0;
@@ -145,7 +164,7 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   // Initialize publishers and subscribers
   //odom_pub_ = nh.advertise<nav_msgs::Odometry>("odom", 10); //MUST have a node namespace, ns="quadName", in launchfile
   localOdom_pub_ = nh.advertise<nav_msgs::Odometry>("local_odom_INS", 10);
-  mocap_pub_ = nh.advertise<geometry_msgs::PoseStamped>("mavros/mocap/pose", 10);
+  mocap_pub_ = nh.advertise<geometry_msgs::PoseStamped>("mavros/mocap/pose_INS", 10);
 /*  gps_sub_ = nh.subscribe(quadPoseTopic, 10, &gpsImuNode::gpsCallback,
                             this, ros::TransportHints().tcpNoDelay());*/
 //  internalPosePub_ = nh.advertise<geometry_msgs::PoseStamped>(posePubTopic,10);
@@ -256,9 +275,8 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
     if(dtLastProc>0) //Just in case a gps message is received late
     { 
       //Propagate state nonlinearly
-      xState=fdyn(xState,dtLastProc,imuAccelMeas,imuAttRateMeas,RBI,l_imu);
-      RBI=updateRBIfromGamma(RBI, xState.middleRows(6,3));
-      xState.middleRows(6,3)=Eigen::Vector3d::Zero();
+      /*xState=fdyn(xState,dtLastProc,imuAccelMeas,imuAttRateMeas,RBI,l_imu);
+
       
       //Augment F matrix
       //Eigen::Matrix<double,15,15> Fmat_local = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI);
@@ -268,9 +286,12 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
       
       //Calculate reported covariance
       Eigen::Matrix<double,15,6> gammak=getGammakmatrixCF(dtLastProc,RBI); //dt for gammak is from last gps to current gps
-      P_report = Fmat_local*P_report*Fmat_local.transpose() + gammak*Qimu*gammak.transpose();
+      P_report = Fmat_local*P_report*Fmat_local.transpose() + gammak*Qimu*gammak.transpose();*/
+      spkfPropagate15(xState,Pimu,Qk12,dtLastProc,imuAccelMeas,imuAttRateMeas,RBI,l_imu,Pimu,xState);
       //Publish
+      P_report = Pimu;
       publishOdomAndMocap();
+
       //Cleanup
       tLastProcessed = thisTime;
 
