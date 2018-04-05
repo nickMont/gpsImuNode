@@ -113,7 +113,7 @@ Eigen::Matrix3d rotMatFromEuler(Eigen::Vector3d ee)
 
 
 //Rotation matrix
-Eigen::Matrix3d euler2dcm(const Eigen::Vector3d ee)
+Eigen::Matrix3d euler2dcm312(const Eigen::Vector3d ee)
 {
   	const double cPhi = cos(ee(0));
   	const double sPhi = sin(ee(0));

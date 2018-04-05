@@ -175,6 +175,8 @@ Eigen::Matrix<double,6,15> gpsImuNode::getHkMatrixTwoAntennaTrueState(const Eige
 }
 
 
+
+
 void gpsImuNode::runUKF(double dt0)
 {
 	//std::cout<<"RUNNING CF, dt="<<dt0<<std::endl;
@@ -212,12 +214,13 @@ Eigen::Matrix<double,15,1> gpsImuNode::fdynSPKF(const Eigen::Matrix<double,15,1>
 	const Eigen::Vector3d vgk2 = vk.middleRows(3,3);
 	const Eigen::Vector3d vak = vk.middleRows(6,3);
 	const Eigen::Vector3d vak2 = vk.bottomRows(3);
+	const Eigen::Matrix3d RR2 = updateRBIfromGamma(RR,x0.middleRows(6,3));
 
 	//Approximate propagation
 	Eigen::Vector3d xkp1 = x + dt*v;
 	Eigen::Vector3d omegaB = wB0 - bg - vgk;
 	Eigen::Vector3d wB_x_wB_x_lAB = omegaB.cross(omegaB.cross(lAB));
-	Eigen::Vector3d a = RR.transpose()*(fB0 - wB_x_wB_x_lAB - ba - vak) - Eigen::Vector3d(0,0,9.81);
+	Eigen::Vector3d a = RR2.transpose()*(fB0 - wB_x_wB_x_lAB - ba - vak) - Eigen::Vector3d(0,0,9.81);
 	Eigen::Vector3d vkp1 = v + dt*a;
 	Eigen::Vector3d gammakp1 = gamma + dt*omegaB;
 
@@ -225,8 +228,8 @@ Eigen::Matrix<double,15,1> gpsImuNode::fdynSPKF(const Eigen::Matrix<double,15,1>
 	x1.topRows(3) = xkp1;
 	x1.middleRows(3,3) = vkp1;
 	x1.middleRows(6,3) = gammakp1;
-	x1.middleRows(9,3) = (1-dt/tauA)*x1.middleRows(9,3) + vak2;
-	x1.bottomRows(3) = (1-dt/tauG)*x1.bottomRows(3) + vgk2;
+	x1.middleRows(9,3) = exp(-dt/tauA)*x1.middleRows(9,3) + vak2;
+	x1.bottomRows(3) = exp(-dt/tauG)*x1.bottomRows(3) + vgk2;
 
 	return x1;
 }
@@ -239,7 +242,7 @@ Eigen::Matrix<double,6,1> gpsImuNode::hnonlinSPKF(const Eigen::Matrix<double,15,
 	Eigen::Matrix<double,6,1> zhat;
 
 	Eigen::Matrix3d R2 = updateRBIfromGamma(RR,x0.middleRows(6,3));
-	Eigen::Vector3d rCB = R2.transpose()*unit3(ls2p+vk.bottomRows(3));
+	Eigen::Vector3d rCB = R2.transpose()*unit3(ls2p)+vk.bottomRows(3);
 	zhat.topRows(3)=x0.topRows(3)+R2.transpose()*lcg2p+vk.topRows(3);
 	zhat.bottomRows(3)=rCB;
 	return zhat;
@@ -269,16 +272,16 @@ void gpsImuNode::spkfPropagate15(const Eigen::Matrix<double,15,1> x0, const Eige
 	Eigen::Matrix<double,27,27> cholP; // compute the Cholesky decomposition of A
 	Paug.topLeftCorner(15,15)=P0;
 	Paug.bottomRightCorner(12,12)=Q;
-	//std::cout << "Eig(P):" << std::endl << Paug.eigenvalues() <<std::endl;
-	cholP = (Paug.llt().matrixL()).transpose();
-	//std::cout << "chol(P_aug)" <<std::endl<<cholP<<std::endl; 
-	//std::cout << "maxval: " << cholP.maxCoeff() << std::endl;
+
+	cholP = (Paug.llt().matrixL());
+
 	xBar = fdynSPKF(x0, dt, fB0, Eigen::Matrix<double,12,1>::Zero(), wB0, RR, lAB);
 	xStore.col(0) = xBar;
 	Eigen::Matrix<double,27,1> xAug, x_sp;
 	xAug.topRows(15) = x0;
 	xAug.bottomRows(12)=Eigen::Matrix<double,12,1>::Zero();
 	xBar = w_mean_center*xBar;
+	
 	int colno;
 	double spSign; //This can be an int (will only have values on +-1), I'm just being careful to avoid implicit conversions.
 	//Propagate through sigma points
@@ -342,7 +345,7 @@ void gpsImuNode::spkfMeasure6(const Eigen::Matrix<double,15,1> x0, const Eigen::
 
 	//Center point and propagation
 	Paug.topLeftCorner(15,15)=P0; Paug.bottomRightCorner(6,6)=R;
-	cholP = (Paug.llt().matrixL()).transpose();
+	cholP = (Paug.llt().matrixL());
 	zBar = hnonlinSPKF(x0, RR, ls2p, lcg2p, Eigen::Matrix<double,6,1>::Zero());
 	zStore.col(0) = zBar;
 	xStore.col(0) = x0;
@@ -393,11 +396,29 @@ void gpsImuNode::spkfMeasure6(const Eigen::Matrix<double,15,1> x0, const Eigen::
 }
 
 
+//Rotation matrix
+Eigen::Matrix3d gpsImuNode::euler2dcm312(const Eigen::Vector3d ee)
+{
+  	const double cPhi = cos(ee(0));
+  	const double sPhi = sin(ee(0));
+  	const double cThe = cos(ee(1));
+  	const double sThe = sin(ee(1));
+  	const double cPsi = cos(ee(2));
+  	const double sPsi = sin(ee(2));
+  	Eigen::Matrix3d R2;
+  	R2 << cPsi*cThe - sPhi*sPsi*sThe, cThe*sPsi + cPsi*sPhi*sThe, -cPhi*sThe,
+        -cPhi*sPsi,                                  cPhi*cPsi,       sPhi,
+        cPsi*sThe + cThe*sPhi*sPsi, sPsi*sThe - cPsi*cThe*sPhi,  cPhi*cThe;
+  	return R2;
+}
+
+
 //rotate by hatmat(gammavec) to new RBI
 Eigen::Matrix3d gpsImuNode::updateRBIfromGamma(const Eigen::Matrix3d R0, const Eigen::Vector3d gamma)
 {
-    return (Eigen::Matrix3d::Identity()+hatmat(gamma))*R0;
+    //return (Eigen::Matrix3d::Identity()+hatmat(gamma))*R0;
     //return (rotMatFromEuler(gamma))*R0;
+    return (euler2dcm312(gamma))*R0;
 }
 
 

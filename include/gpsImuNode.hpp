@@ -69,6 +69,7 @@ class gpsImuNode
   Eigen::Matrix3d rotMatFromQuat(const Eigen::Quaterniond qq);
   void saturateBiases(const double baMax, const double bgMax);
   double symmetricSaturationDouble(const double inval, const double maxval);
+  Eigen::Matrix3d euler2dcm312(const Eigen::Vector3d ee);
 
 
   void spkfPropagate15(const Eigen::Matrix<double,15,1> x0, const Eigen::Matrix<double,15,15> P0,
@@ -126,7 +127,7 @@ class gpsImuNode
   bool validRTKtest, validA2Dtest, kfInit, hasAlreadyReceivedA2D, hasAlreadyReceivedRTK, hasRBI, isCalibrated;
 
   long long int tIndexConfig;
-  Eigen::Matrix<double,12,12> Qk12;
+  Eigen::Matrix<double,12,12> Qk12, Qk12dividedByDt;
   uint32_t tmeasWeek, tmeasSecOfWeek, toffsetWeek, toffsetSecOfWeek;
   double tmeasFracSecs, toffsetFracSecs, tauG, tauA;
   uint64_t sampleFreqNum, sampleFreqDen;
@@ -135,6 +136,7 @@ class gpsImuNode
   Eigen::Vector3d attRateMeasOrig, accelMeasOrig, initBA, initBG;
   int32_t tnavsolWeek, tnavsolSecOfWeek;
   double dtGPS, tnavsolFracSecs, maxBa, maxBg, sec_in_week;
+  std::string updateType;
 
 };
 

@@ -49,6 +49,7 @@ void gpsImuNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBase
 
         //Publish messages
         P_report = Pimu;      
+        updateType = "gps";
         publishOdomAndMocap();
   
         //Clean up
@@ -142,9 +143,10 @@ void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::Const
             //Fimu=getNumderivF(double(1e-9), dtLastProc, xState, accelMeasOrig, attRateMeasOrig,RBI, l_imu)*Fimu;
             runCF(dtLastProc);*/
             runUKF(dtLastProc);
-  
+
             //Publish messages
             P_report = Pimu;      
+            updateType = "gps";
             publishOdomAndMocap();
 
             //Clean up
@@ -199,8 +201,13 @@ void gpsImuNode::publishOdomAndMocap()
     xState.middleRows(6,3)=Eigen::Vector3d::Zero();
     RBI = orthonormalize(RBI);
 
-    //std::cout << "Accelbias:" <<std::endl;
-    //std::cout << xState(9) << " " << xState(10) << " " << xState(11) << std::endl;
+    /*if(!updateType.compare("gps"))
+      {std::cout << "UPDATE TYPE: "<< updateType<< " " << updateType<< " " << updateType<< " " << updateType<< " " << updateType <<std::endl;}
+    else{
+    std::cout << "UPDATE TYPE: " << updateType <<std::endl;}*/
+    std::cout << "Accelbias:" <<std::endl;
+    /*std::cout << xState(9) << " " << xState(10) << " " << xState(11) << std::endl;
+    std::cout << "P_eigs: " <<std::endl << (Pimu.eigenvalues()).transpose() << std::endl;*/
 
     //std::cout << "Gyrobias:" <<std::endl;
     //std::cout << xState(12) << " " << xState(13) << " " << xState(14) << std::endl;
@@ -227,7 +234,7 @@ void gpsImuNode::publishOdomAndMocap()
 
     //Generate message
     localOdom_msg.header.stamp = ros::Time::now();
-    localOdom_msg.header.frame_id = "world";
+    localOdom_msg.header.frame_id = updateType;
     localOdom_msg.child_frame_id = "world";
     localOdom_msg.pose.pose.position.x = xState(0);
     localOdom_msg.pose.pose.position.y = xState(1);

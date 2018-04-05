@@ -129,10 +129,19 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   Qk12.block(6,6,3,3) = gScale*gScale*0.001/dtIMU*Eigen::Matrix3d::Identity();
   Qk12.bottomRightCorner(3,3) = pow(gScale*100.0,2)*(1.-alphaA*alphaA)*Eigen::Matrix3d::Identity();
 
-  Qk12.topLeftCorner(3,3) = pow(0.1*pi/180/sqrt(dtIMU),2)*Eigen::Matrix3d::Identity(); //see datasheet
-  Qk12.block(6,6,3,3) = pow(9.81*1/1.0e6/sqrt(dtIMU),2)*Eigen::Matrix3d::Identity(); //see datasheet
+  //Filled spec sheet data
+  Qk12.topLeftCorner(3,3) = pow(0.1*pi/180/sqrt(dtIMU),2)*Eigen::Matrix3d::Identity(); //see datasheet  
   Qk12.block(3,3,3,3) = pow(thetaScale*100.0/360.0,2)*(1.-alphaG*alphaG)*Eigen::Matrix3d::Identity(); //random tests
+  Qk12.block(6,6,3,3) = pow(9.81/1.0e6*150.0/sqrt(dtIMU),2)*Eigen::Matrix3d::Identity(); //see datasheet
   Qk12.bottomRightCorner(3,3) = pow(gScale*1000.0,2)*(1.-alphaA*alphaA)*Eigen::Matrix3d::Identity(); //random tests
+
+  //Testing
+  Qk12.topLeftCorner(3,3) = pow(0.1*pi/180/sqrt(dtIMU),2)*Eigen::Matrix3d::Identity(); //see datasheet  
+  Qk12.block(3,3,3,3) = 0.1*pow(thetaScale*100.0/360.0,2)*(1.-alphaG*alphaG)*Eigen::Matrix3d::Identity(); //random tests
+  Qk12.block(6,6,3,3) = pow(9.81/1.0e6*150.0/sqrt(dtIMU),2)*Eigen::Matrix3d::Identity(); //see datasheet
+  Qk12.bottomRightCorner(3,3) = 0.1*pow(gScale*1000.0,2)*(1.-alphaA*alphaA)*Eigen::Matrix3d::Identity(); //random tests
+
+  Qk12dividedByDt = Qk12/dtIMU;  //When used in filter, multiply by dt of each update step
 
   Pimu=Eigen::MatrixXd::Identity(15,15);
   Eigen::Matrix<double,15,1> P15diagElements;
@@ -190,7 +199,7 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   sampleFreqNum = imuConfigMsg->sampleFreqNumerator;
   sampleFreqDen = imuConfigMsg->sampleFreqDenominator;  
   tIndexConfig = imuConfigMsg->tIndexk;
-  maxBa = imuConfigAccel * 250.0;
+  maxBa = imuConfigAccel * 250.0; //imu report units times scalefactor
   maxBg = imuConfigAttRate * 250.0;
   ROS_INFO("IMU configuration recorded.");
 
@@ -289,6 +298,7 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
       P_report = Fmat_local*P_report*Fmat_local.transpose() + gammak*Qimu*gammak.transpose();*/
       spkfPropagate15(xState,Pimu,Qk12,dtLastProc,imuAccelMeas,imuAttRateMeas,RBI,l_imu,Pimu,xState);
       //Publish
+      updateType = "imu";
       P_report = Pimu;
       publishOdomAndMocap();
 
