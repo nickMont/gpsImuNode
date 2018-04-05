@@ -205,9 +205,9 @@ void gpsImuNode::publishOdomAndMocap()
       {std::cout << "UPDATE TYPE: "<< updateType<< " " << updateType<< " " << updateType<< " " << updateType<< " " << updateType <<std::endl;}
     else{
     std::cout << "UPDATE TYPE: " << updateType <<std::endl;}*/
-    std::cout << "Accelbias:" <<std::endl;
-    /*std::cout << xState(9) << " " << xState(10) << " " << xState(11) << std::endl;
-    std::cout << "P_eigs: " <<std::endl << (Pimu.eigenvalues()).transpose() << std::endl;*/
+    //std::cout << "Accelbias:" <<std::endl;
+    //std::cout << xState(9) << " " << xState(10) << " " << xState(11) << std::endl;
+    //std::cout << "P_eigs: " <<std::endl << (Pimu.eigenvalues()).transpose() << std::endl;
 
     //std::cout << "Gyrobias:" <<std::endl;
     //std::cout << xState(12) << " " << xState(13) << " " << xState(14) << std::endl;
@@ -252,15 +252,15 @@ void gpsImuNode::publishOdomAndMocap()
     localOdom_msg.twist.twist.angular.y=imuAttRateMeas(1)-xState(13);
     localOdom_msg.twist.twist.angular.z=imuAttRateMeas(2)-xState(14);
     /*for(int i = 0; i < 3; i++)
+    {
+      for(int j = 0; j < 3; j++)
       {
-        for(int j = 0; j < 3; j++)
-        {
-          localOdom_msg.pose.covariance[6*i + j] = P_report(i, j);
-          localOdom_msg.twist.covariance[6*i + j] = P_report(3+i, 3+j);
-          //Covariance of attitude rate is gaussian(IMU error) + gaussian(bias estimate)
-          localOdom_msg.twist.covariance[6*i + j + 21] = Qimu(3+i, 3+j) + P_report(12+i, 12+j);
-        }
-      }*/
+        localOdom_msg.pose.covariance[6*i + j] = P_report(i, j);
+        localOdom_msg.twist.covariance[6*i + j] = P_report(3+i, 3+j);
+        //Covariance of attitude rate is gaussian(IMU error) + gaussian(bias estimate)
+        localOdom_msg.twist.covariance[6*i + j + 21] = Qimu(3+i, 3+j) + P_report(12+i, 12+j);
+      }
+    }*/
 
     //Publish local odometry message
     localOdom_pub_.publish(localOdom_msg);

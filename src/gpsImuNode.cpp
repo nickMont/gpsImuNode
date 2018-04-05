@@ -124,10 +124,7 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   const double gScale = 9.81/1000.0;
   const double thetaScale = pi/180.0;
   const double alphaG = exp(-dtIMU/tauG);
-  Qk12.topLeftCorner(3,3) = thetaScale*thetaScale*25.0e-4/dtIMU*Eigen::Matrix3d::Identity();
-  Qk12.block(3,3,3,3) = pow(thetaScale*100.0/3600.0,2)*(1.-alphaG*alphaG)*Eigen::Matrix3d::Identity();
-  Qk12.block(6,6,3,3) = gScale*gScale*0.001/dtIMU*Eigen::Matrix3d::Identity();
-  Qk12.bottomRightCorner(3,3) = pow(gScale*100.0,2)*(1.-alphaA*alphaA)*Eigen::Matrix3d::Identity();
+  //Covariance elements: gyro output, gyro bias, accel output, accel bias
 
   //Filled spec sheet data
   Qk12.topLeftCorner(3,3) = pow(0.1*pi/180/sqrt(dtIMU),2)*Eigen::Matrix3d::Identity(); //see datasheet  
@@ -135,18 +132,26 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   Qk12.block(6,6,3,3) = pow(9.81/1.0e6*150.0/sqrt(dtIMU),2)*Eigen::Matrix3d::Identity(); //see datasheet
   Qk12.bottomRightCorner(3,3) = pow(gScale*1000.0,2)*(1.-alphaA*alphaA)*Eigen::Matrix3d::Identity(); //random tests
 
-  //Testing
-  Qk12.topLeftCorner(3,3) = pow(0.1*pi/180/sqrt(dtIMU),2)*Eigen::Matrix3d::Identity(); //see datasheet  
-  Qk12.block(3,3,3,3) = 0.1*pow(thetaScale*100.0/360.0,2)*(1.-alphaG*alphaG)*Eigen::Matrix3d::Identity(); //random tests
-  Qk12.block(6,6,3,3) = pow(9.81/1.0e6*150.0/sqrt(dtIMU),2)*Eigen::Matrix3d::Identity(); //see datasheet
-  Qk12.bottomRightCorner(3,3) = 0.1*pow(gScale*1000.0,2)*(1.-alphaA*alphaA)*Eigen::Matrix3d::Identity(); //random tests
+  //Testing based on ground test.  Works but velocity is noisy
+  Qk12.topLeftCorner(3,3) = 6.95e-4*Eigen::Matrix3d::Identity();
+  Qk12.block(3,3,3,3) = pow(thetaScale*100.0/360.0,2)*(1.-alphaG*alphaG)*Eigen::Matrix3d::Identity();
+  Qk12.block(6,6,3,3) = 0.0045*Eigen::Matrix3d::Identity();
+  Qk12.bottomRightCorner(3,3) = 0.1*pow(gScale*1000.0,2)*(1.-alphaA*alphaA)*Eigen::Matrix3d::Identity();
 
+  //Testing
+  Eigen::Matrix3d QangularAccel = 1.25*Eigen::Matrix3d::Identity(); //Q caused by angular acceleration
+  Qk12.topLeftCorner(3,3) = 6.95e-4*Eigen::Matrix3d::Identity();
+  Qk12.block(3,3,3,3) = 1.0e-2*pow(thetaScale*100.0/360.0,2)*(1.-alphaG*alphaG)*Eigen::Matrix3d::Identity();
+  Qk12.block(6,6,3,3) = 0.0045*Eigen::Matrix3d::Identity() + QangularAccel;
+  Qk12.bottomRightCorner(3,3) = 1.0e-14*pow(gScale*80.0,2)*(1.-alphaA*alphaA)*Eigen::Matrix3d::Identity();
+
+  //Testing, not currently in use
   Qk12dividedByDt = Qk12/dtIMU;  //When used in filter, multiply by dt of each update step
 
   Pimu=Eigen::MatrixXd::Identity(15,15);
   Eigen::Matrix<double,15,1> P15diagElements;
   P15diagElements << 1.0e-4,1.0e-4,1.0e-4, 1.0e-6,1.0e-6,1.0e-6,
-      1.0e-5,1.0e-5,1.0e-5, 1.0e-4,1.0e-4,1.0e-4, 1.0e-5, 1.0e-5, 1.0e-5;
+      1.0e-5,1.0e-5,1.0e-5, 1.0e-5,1.0e-5,1.0e-5, 1.0e-8, 1.0e-8, 1.0e-8;
   Pimu = P15diagElements.asDiagonal();
   P_report=Pimu;
   R_G2wrw=Rwrw*Recef2enu;
