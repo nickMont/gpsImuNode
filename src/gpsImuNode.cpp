@@ -177,6 +177,9 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   hasRBI = false;
   isCalibrated=false;
 
+  //Try to use buffer to fix timing issues. Experimental
+  tryToUseBuffer = false;
+
   // Initialize publishers and subscribers
   //odom_pub_ = nh.advertise<nav_msgs::Odometry>("odom", 10); //MUST have a node namespace, ns="quadName", in launchfile
   localOdom_pub_ = nh.advertise<nav_msgs::Odometry>("local_odom_INS", 10);
@@ -277,6 +280,8 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   //Rotate gyro/accel measurements to body frame
   //NOTE1: this does not need Rpqr convention
   //NOTE2: this is hardcoded for the lynx as mounted on phoenix and company
+  imuAccelPrev = imuAccelMeas;
+  imuAttRatePrev = imuAttRateMeas;
   Eigen::Matrix3d Raccel, Rgyro;
   Raccel << 0,-1,0, -1,0,0, 0,0,-1;
   Rgyro  << 0,-1,0, -1,0,0, 0,0,-1;
@@ -306,6 +311,12 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
       //if(imuAccelMeas.norm()>9.81*2.0)
       //  {std::cout << "Multiple gs acceleration: " << imuAccelMeas.norm()/9.81 << std::endl;}
 
+      //Data storage for poor man's buffer
+      xStatePrev = xState;
+      PimuPrev = Pimu;
+      tProcPrev = tLastProcessed;
+
+      //Propagate
       spkfPropagate15(xState,Pimu,Qk12,dtLastProc,imuAccelMeas,imuAttRateMeas,RBI,l_imu,Pimu,xState);
       //Publish
       updateType = "imu";

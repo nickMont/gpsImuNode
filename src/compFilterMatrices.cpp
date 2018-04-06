@@ -199,6 +199,27 @@ void gpsImuNode::runUKF(double dt0)
 }
 
 
+void gpsImuNode::runUKF_fromBuffer(double dt0)
+{
+	//std::cout<<"RUNNING CF, dt="<<dt0<<std::endl;
+	Eigen::Matrix<double,15,15> pbar0;
+	Eigen::Matrix<double,15,1>  xbar0;
+	//Qk12 ~ (QK/dt_est)*dt
+	spkfPropagate15(xStatePrev,PimuPrev,(Qk12dividedByDt*dt0),dt0,imuAccelMeas,imuAttRateMeas,RBI,l_imu, pbar0,xbar0);
+	updateRBIfromGamma(RBI,xbar0.middleRows(6,3));
+	xbar0.middleRows(6,3)=Eigen::Vector3d::Zero();
+	spkfMeasure6(xbar0, pbar0, Rk,internal_rI, internal_rC,RBI,l_cg2p,l_s2p,Pimu,xState);
+	//spkfMeasure6(xbar0, pbar0, Rk,internal_rI, internal_rC,RBI,l_cg2p,l_s2p,Pimu,xState);
+	//std::cout << "xstate after measurement" << std::endl << xState <<std::endl;
+	//Test bias saturation to avoid OOM errors
+	saturateBiases(maxBa,maxBg);
+
+	//std::cout << "after measurement:" <<std::endl<<xState <<std::endl;
+
+	return;
+}
+
+
 //Dynamic nonlinear propagation for IMU data. NOTE: This handles noise and noise rate for gyro/accel
 Eigen::Matrix<double,15,1> gpsImuNode::fdynSPKF(const Eigen::Matrix<double,15,1> x0, const double dt,
 	const Eigen::Vector3d fB0, const Eigen::Matrix<double,12,1> vk, const Eigen::Vector3d wB0,

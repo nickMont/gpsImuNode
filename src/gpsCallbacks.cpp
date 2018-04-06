@@ -56,10 +56,16 @@ void gpsImuNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBase
         //Clean up
         Fimu = Eigen::MatrixXd::Identity(15,15);
         tLastProcessed = ttime;
+      }else if(ttime-tProcPrev > 0 && isCalibrated && tryToUseBuffer) //If gps message is received out of order
+      {
+        runUKF_fromBuffer(ttime-tProcPrev);
+        spkfPropagate15(xState,Pimu,Qk12dividedByDt*(tLastProcessed-ttime),tLastProcessed-ttime,
+            imuAccelPrev,imuAttRatePrev,RBI,l_imu, Pimu,xState);
+        //Do NOT publish
       }
 
       //Reset to avoid publishing twice
-      //hasAlreadyReceivedRTK=false; hasAlreadyReceivedA2D=false; 
+      hasAlreadyReceivedRTK=false; hasAlreadyReceivedA2D=false; 
     }
   }
 }
@@ -155,10 +161,16 @@ void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::Const
             //Clean up
             Fimu = Eigen::MatrixXd::Identity(15,15);
             tLastProcessed = ttime;
+          }else if(ttime-tProcPrev > 0 && isCalibrated && tryToUseBuffer) //If gps message is received out of order
+          {
+            runUKF_fromBuffer(ttime-tProcPrev);
+            spkfPropagate15(xState,Pimu,Qk12dividedByDt*(tLastProcessed-ttime),tLastProcessed-ttime,
+                imuAccelMeas,imuAttRateMeas,RBI,l_imu, Pimu,xState);
+            //Do NOT publish
           }
 
           //Reset to avoid publishing twice
-          //hasAlreadyReceivedRTK=false; hasAlreadyReceivedA2D=false;
+          hasAlreadyReceivedRTK=false; hasAlreadyReceivedA2D=false;
         }
     }
 }

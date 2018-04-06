@@ -89,6 +89,7 @@ class gpsImuNode
     const Eigen::Vector3d fB0, const Eigen::Matrix<double,12,1> vk, const Eigen::Vector3d wB0,
     const Eigen::Matrix3d RR, const Eigen::Vector3d lAB);
   void runUKF(double dt0); 
+  void runUKF_fromBuffer(double dt0);
 
 
  private:
@@ -108,10 +109,10 @@ class gpsImuNode
 
   Eigen::Matrix3d Recef2enu, Rwrw, R_G2wrw, RBI;
   Eigen::Matrix<double,21,3> rCtildeCalib, rBCalib;
-  Eigen::Matrix<double,15,1> xState;
+  Eigen::Matrix<double,15,1> xState, xStatePrev;
   //Pimu, Fimu are P, F matrices of EKF.  P_report is special IMU component used in mocap for publisher.
   //Pimu sets P_report; P_report is used exclusively for reporting P.
-  Eigen::Matrix<double,15,15> Fimu, Pimu, P_report;
+  Eigen::Matrix<double,15,15> Fimu, Pimu, P_report, PimuPrev;
   Eigen::Matrix<double,6,6> Qimu, Rk;
 
   bool publish_tf_;
@@ -133,10 +134,12 @@ class gpsImuNode
   uint64_t sampleFreqNum, sampleFreqDen;
   uint64_t one, imuTimeTrunc;
   double dtRX_meters;
-  Eigen::Vector3d attRateMeasOrig, accelMeasOrig, initBA, initBG;
+  Eigen::Vector3d attRateMeasOrig, accelMeasOrig, initBA, initBG, imuAccelPrev, imuAttRatePrev;
   int32_t tnavsolWeek, tnavsolSecOfWeek;
-  double dtGPS, tnavsolFracSecs, maxBa, maxBg, sec_in_week;
+  double dtGPS, tnavsolFracSecs, maxBa, maxBg, sec_in_week, tProcPrev;
   std::string updateType;
+
+  bool tryToUseBuffer;
 
 };
 
