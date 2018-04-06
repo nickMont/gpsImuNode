@@ -105,8 +105,8 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
           0, 0, 1;
 
   //Covariances
-  tauA=100.0;
-  tauG=100.0;
+  tauA=1000.0;
+  tauG=1000.0;
   double pA,pG;
   pA=1.0e-2;
   pG=1.0e-3;
@@ -114,7 +114,8 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   Eigen::Matrix<double,6,1> P6diagElements;
   P6diagElements << pA*0.000241,pA*0.000241,pA*0.000241, pG*3.0e-3,pG*3.0e-3,pG*3.0e-3;
   Qimu = P6diagElements.asDiagonal();
-  P6diagElements << 0.000036,0.000036,0.000144, 0.000144,0.000144,0.000144;
+  P6diagElements << 0.000036,0.000036,0.000144, 0.000144,0.000144,0.000144;  //Params file
+  P6diagElements << 0.00036,0.00036,0.0004, 0.000144,0.000144,0.000144;  //Test values
   Rk = P6diagElements.asDiagonal();
   Qk12 = Eigen::Matrix<double,12,12>::Zero();
 
@@ -139,11 +140,12 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   Qk12.bottomRightCorner(3,3) = 0.1*pow(gScale*1000.0,2)*(1.-alphaA*alphaA)*Eigen::Matrix3d::Identity();
 
   //Testing
-  Eigen::Matrix3d QangularAccel = 1.25*Eigen::Matrix3d::Identity(); //Q caused by angular acceleration
-  Qk12.topLeftCorner(3,3) = 6.95e-4*Eigen::Matrix3d::Identity();
-  Qk12.block(3,3,3,3) = 1.0e-2*pow(thetaScale*100.0/360.0,2)*(1.-alphaG*alphaG)*Eigen::Matrix3d::Identity();
+  Eigen::Matrix3d QangularAccel = 10.0*Eigen::Matrix3d::Identity(); //Q caused by angular acceleration
+  Eigen::Matrix3d QgyroOutput2 = 1e-3*Eigen::Matrix3d::Identity();
+  Qk12.topLeftCorner(3,3) = 6.95e-4*Eigen::Matrix3d::Identity() + QgyroOutput2;
+  Qk12.block(3,3,3,3) = 1.0e-6*pow(thetaScale*100.0/360.0,2)*(1.-alphaG*alphaG)*Eigen::Matrix3d::Identity();
   Qk12.block(6,6,3,3) = 0.0045*Eigen::Matrix3d::Identity() + QangularAccel;
-  Qk12.bottomRightCorner(3,3) = 1.0e-14*pow(gScale*80.0,2)*(1.-alphaA*alphaA)*Eigen::Matrix3d::Identity();
+  Qk12.bottomRightCorner(3,3) = 1.0e-6*pow(gScale*80.0,2)*(1.-alphaA*alphaA)*Eigen::Matrix3d::Identity();
 
   //Testing, not currently in use
   Qk12dividedByDt = Qk12/dtIMU;  //When used in filter, multiply by dt of each update step
@@ -204,8 +206,10 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   sampleFreqNum = imuConfigMsg->sampleFreqNumerator;
   sampleFreqDen = imuConfigMsg->sampleFreqDenominator;  
   tIndexConfig = imuConfigMsg->tIndexk;
-  maxBa = imuConfigAccel * 250.0; //imu report units times scalefactor
-  maxBg = imuConfigAttRate * 250.0;
+  //maxBa = imuConfigAccel * 250.0; //imu report units times scalefactor
+  //maxBg = imuConfigAttRate * 250.0;
+  maxBa = imuConfigAccel*1.0e4;
+  maxBg = imuConfigAttRate*1.0e4;
   ROS_INFO("IMU configuration recorded.");
 
   //Load offset time data

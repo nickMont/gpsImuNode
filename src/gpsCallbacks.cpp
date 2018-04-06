@@ -205,12 +205,12 @@ void gpsImuNode::publishOdomAndMocap()
       {std::cout << "UPDATE TYPE: "<< updateType<< " " << updateType<< " " << updateType<< " " << updateType<< " " << updateType <<std::endl;}
     else{
     std::cout << "UPDATE TYPE: " << updateType <<std::endl;}*/
-    //std::cout << "Accelbias:" <<std::endl;
-    //std::cout << xState(9) << " " << xState(10) << " " << xState(11) << std::endl;
+    std::cout << "Accelbias:" <<std::endl;
+    std::cout << xState(9) << " " << xState(10) << " " << xState(11) << std::endl;
     //std::cout << "P_eigs: " <<std::endl << (Pimu.eigenvalues()).transpose() << std::endl;
 
-    //std::cout << "Gyrobias:" <<std::endl;
-    //std::cout << xState(12) << " " << xState(13) << " " << xState(14) << std::endl;
+    std::cout << "Gyrobias x100:" <<std::endl;
+    std::cout << xState(12)*100.0 << " " << xState(13)*100.0 << " " << xState(14)*100.0 << std::endl;
 
     //Output counter
     //static int counter(0);

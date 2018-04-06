@@ -220,7 +220,7 @@ Eigen::Matrix<double,15,1> gpsImuNode::fdynSPKF(const Eigen::Matrix<double,15,1>
 	Eigen::Vector3d xkp1 = x + dt*v;
 	Eigen::Vector3d omegaB = wB0 - bg - vgk;
 	Eigen::Vector3d wB_x_wB_x_lAB = omegaB.cross(omegaB.cross(lAB));
-	Eigen::Vector3d a = RR2.transpose()*(fB0 - wB_x_wB_x_lAB - ba - vak) - Eigen::Vector3d(0,0,9.81);
+	Eigen::Vector3d a = RR2.transpose()*(fB0 - wB_x_wB_x_lAB - ba - vak) - Eigen::Vector3d(0,0,9.8);
 	Eigen::Vector3d vkp1 = v + dt*a;
 	Eigen::Vector3d gammakp1 = gamma + dt*omegaB;
 
