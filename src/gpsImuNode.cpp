@@ -115,7 +115,7 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   P6diagElements << pA*0.000241,pA*0.000241,pA*0.000241, pG*3.0e-3,pG*3.0e-3,pG*3.0e-3;
   Qimu = P6diagElements.asDiagonal();
   P6diagElements << 0.000036,0.000036,0.000144, 0.000144,0.000144,0.000144;  //Params file
-  P6diagElements << 0.00036,0.00036,0.0004, 0.000144,0.000144,0.000144;  //Test values
+  P6diagElements << 0.000036,0.000036,0.000019, 0.000144,0.000144,0.000144;  //Test values
   Rk = P6diagElements.asDiagonal();
   Qk12 = Eigen::Matrix<double,12,12>::Zero();
 
@@ -140,7 +140,7 @@ gpsImuNode::gpsImuNode(ros::NodeHandle &nh)
   Qk12.bottomRightCorner(3,3) = 0.1*pow(gScale*1000.0,2)*(1.-alphaA*alphaA)*Eigen::Matrix3d::Identity();
 
   //Testing
-  Eigen::Matrix3d QangularAccel = 10.0*Eigen::Matrix3d::Identity(); //Q caused by angular acceleration
+  Eigen::Matrix3d QangularAccel = 0.1*Eigen::Matrix3d::Identity(); //Q caused by angular acceleration
   Eigen::Matrix3d QgyroOutput2 = 1e-3*Eigen::Matrix3d::Identity();
   Qk12.topLeftCorner(3,3) = 6.95e-4*Eigen::Matrix3d::Identity() + QgyroOutput2;
   Qk12.block(3,3,3,3) = 1.0e-6*pow(thetaScale*100.0/360.0,2)*(1.-alphaG*alphaG)*Eigen::Matrix3d::Identity();
@@ -236,8 +236,6 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   //Initialization variables
   static int counter=0;
   static uint64_t imuSeq=0;
-  static Eigen::Matrix<double,100,3> imuAStore=Eigen::MatrixXd::Zero(100,3);
-  static Eigen::Matrix<double,100,3> imuGStore=Eigen::MatrixXd::Zero(100,3);
   static double tLastImu=0;
   static Eigen::Vector3d ba0=Eigen::Vector3d(0,0,0);
   static Eigen::Vector3d bg0=Eigen::Vector3d(0,0,0);
@@ -259,7 +257,7 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
   const double thisTime = tGPS;
   std::cout.precision(17);
   dt = thisTime-tLastImu;
-  if(dt<=1e-9)
+  if(dt<=1e-9) //Note: NOT abs(dt), as this checks whether or not messages are received out of order as well
   {
     std::cout << "Error: 1ns between IMU measurements" << std::endl;
     //std::cout << "Time: " << thisTime-double(toffsetWeek*SEC_PER_WEEK) <<std::endl;
@@ -294,7 +292,6 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
     { 
       //Propagate state nonlinearly
       /*xState=fdyn(xState,dtLastProc,imuAccelMeas,imuAttRateMeas,RBI,l_imu);
-
       
       //Augment F matrix
       //Eigen::Matrix<double,15,15> Fmat_local = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI);
@@ -305,6 +302,10 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
       //Calculate reported covariance
       Eigen::Matrix<double,15,6> gammak=getGammakmatrixCF(dtLastProc,RBI); //dt for gammak is from last gps to current gps
       P_report = Fmat_local*P_report*Fmat_local.transpose() + gammak*Qimu*gammak.transpose();*/
+
+      //if(imuAccelMeas.norm()>9.81*2.0)
+      //  {std::cout << "Multiple gs acceleration: " << imuAccelMeas.norm()/9.81 << std::endl;}
+
       spkfPropagate15(xState,Pimu,Qk12,dtLastProc,imuAccelMeas,imuAttRateMeas,RBI,l_imu,Pimu,xState);
       //Publish
       updateType = "imu";
@@ -334,10 +335,9 @@ void gpsImuNode::imuDataCallback(const gbx_ros_bridge_msgs::Imu::ConstPtr &msg)
         warnCounter=0;
       }
     }
-  }else if(hasRBI)
+  }else if(hasRBI)  //if RBI has been calculated but the biases have not been calculated
   { 
-    //if RBI has been calculated but the biases have not been calculated
-    ba0=ba0+0.01*(imuAccelMeas - RBI*Eigen::Vector3d(0,0,9.81)); //inefficient
+    ba0=ba0+0.01*(imuAccelMeas - RBI*Eigen::Vector3d(0,0,9.8)); //inefficient
     bg0=bg0+0.01*imuAttRateMeas;
     Eigen::Vector3d rI0;
     rI0 = internal_rI - RBI.transpose()*l_cg2p;

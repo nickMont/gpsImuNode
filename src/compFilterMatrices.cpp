@@ -182,7 +182,8 @@ void gpsImuNode::runUKF(double dt0)
 	//std::cout<<"RUNNING CF, dt="<<dt0<<std::endl;
 	Eigen::Matrix<double,15,15> pbar0;
 	Eigen::Matrix<double,15,1>  xbar0;
-	spkfPropagate15(xState,Pimu,Qk12,dt0,imuAccelMeas,imuAttRateMeas,RBI,l_imu, pbar0,xbar0);
+	//Qk12 ~ (QK/dt_est)*dt
+	spkfPropagate15(xState,Pimu,(Qk12dividedByDt*dt0),dt0,imuAccelMeas,imuAttRateMeas,RBI,l_imu, pbar0,xbar0);
 	updateRBIfromGamma(RBI,xbar0.middleRows(6,3));
 	xbar0.middleRows(6,3)=Eigen::Vector3d::Zero();
 	spkfMeasure6(xbar0, pbar0, Rk,internal_rI, internal_rC,RBI,l_cg2p,l_s2p,Pimu,xState);

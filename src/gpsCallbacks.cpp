@@ -14,7 +14,6 @@ void gpsImuNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBase
   if(ttime>lastRTKtime)  //only use newest time
   {
     hasAlreadyReceivedRTK=true;
-    dtGPS=ttime -lastRTKtime;
     lastRTKtime=ttime;
     //If the message is accepted
     if(msg->testStat > minTestStat)
@@ -38,8 +37,10 @@ void gpsImuNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBase
     {
       internalSeq++;
       double dtLastProc = ttime-tLastProcessed;
+      //if(dtLastProc<0)
+      //  { std::cout << "Negative times!" << "gps: " << ttime << "  imu: "<< tLastProcessed <<std::endl;}
       if(isCalibrated && dtLastProc>0)
-        {
+      {
         /*//Run CF 
         //Fimu = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI) * Fimu;
         Fimu = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI,xState,l_imu) * Fimu;
@@ -58,8 +59,7 @@ void gpsImuNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBase
       }
 
       //Reset to avoid publishing twice
-      hasAlreadyReceivedRTK=false; hasAlreadyReceivedA2D=false; 
-
+      //hasAlreadyReceivedRTK=false; hasAlreadyReceivedA2D=false; 
     }
   }
 }
@@ -102,7 +102,9 @@ void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::Const
             std::cout<<"RBI(0) loaded:"<<std::endl<<RBI<<std::endl;
             hasRBI=true;
         }
+      return;
     }
+
 
     double ttime=msg->tSolution.secondsOfWeek + msg->tSolution.fractionOfSecond + msg->tSolution.week * sec_in_week
           - msg->deltRSec;
@@ -111,7 +113,6 @@ void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::Const
     if(ttime>lastA2Dtime)  //Only use newest time. Ignore 0 messages.
     {
         hasAlreadyReceivedA2D=true;
-        dtGPS=ttime -lastA2Dtime;
         lastA2Dtime=ttime;
         if(msg->testStat > minTestStat)
         {
@@ -135,8 +136,10 @@ void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::Const
         {
           internalSeq++;
           double dtLastProc = ttime-tLastProcessed;
+          //if(dtLastProc<0)
+          //  { std::cout << "Negative times!" << "gps: " << ttime << "  imu: "<< tLastProcessed <<std::endl;}
           if(isCalibrated && dtLastProc>0)
-            {
+          {
             /*//Run CF
             //Fimu = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI) * Fimu;
             Fimu = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI,xState,l_imu) * Fimu;
@@ -155,7 +158,7 @@ void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::Const
           }
 
           //Reset to avoid publishing twice
-          hasAlreadyReceivedRTK=false; hasAlreadyReceivedA2D=false;
+          //hasAlreadyReceivedRTK=false; hasAlreadyReceivedA2D=false;
         }
     }
 }
@@ -199,23 +202,26 @@ void gpsImuNode::publishOdomAndMocap()
     //Update rotation matrix and force orthonormality  
     RBI=updateRBIfromGamma(RBI, xState.middleRows(6,3));
     xState.middleRows(6,3)=Eigen::Vector3d::Zero();
-    RBI = orthonormalize(RBI);
+    //RBI = orthonormalize(RBI);
 
     /*if(!updateType.compare("gps"))
       {std::cout << "UPDATE TYPE: "<< updateType<< " " << updateType<< " " << updateType<< " " << updateType<< " " << updateType <<std::endl;}
     else{
     std::cout << "UPDATE TYPE: " << updateType <<std::endl;}*/
-    std::cout << "Accelbias:" <<std::endl;
-    std::cout << xState(9) << " " << xState(10) << " " << xState(11) << std::endl;
+    //std::cout << "Accelbias:" <<std::endl;
+    //std::cout << xState(9) << " " << xState(10) << " " << xState(11) << std::endl;
     //std::cout << "P_eigs: " <<std::endl << (Pimu.eigenvalues()).transpose() << std::endl;
 
-    std::cout << "Gyrobias x100:" <<std::endl;
-    std::cout << xState(12)*100.0 << " " << xState(13)*100.0 << " " << xState(14)*100.0 << std::endl;
+    //std::cout << "Gyrobias x100:" <<std::endl;
+    //std::cout << xState(12)*100.0 << " " << xState(13)*100.0 << " " << xState(14)*100.0 << std::endl;
 
     //Output counter
-    //static int counter(0);
-    //counter++;
-    //if(counter%10==0)
+    static int counter(0);
+    counter++;
+    if(counter%10==0)
+    {
+      RBI = orthonormalize(RBI);
+    }
     //{std::cout<<"RBI:"<<std::endl<<RBI<<std::endl;}
     
     //not fully populated
@@ -272,13 +278,9 @@ void gpsImuNode::publishOdomAndMocap()
 //    mocap_msg.header = msg->header;
     mocap_msg.header.frame_id = "fcu";
     mocap_pub_.publish(mocap_msg);
+    
+    
 }
-
-
-/*Eigen::Matrix3d gpsImuNode::angleAxis(const double a, const Eigen::Vector3d v)
-{
-
-}*/
 
 
 } //end namespace
