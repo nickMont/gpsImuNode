@@ -1,5 +1,5 @@
 #include <Eigen/Geometry>
-#include "gpsImuNode.hpp"
+#include "estimationNode.hpp"
 #include <string>
 #include <iostream>
 //Contains the two "wordy" A2D and SBRTK callbacks.
@@ -7,7 +7,7 @@
 
 namespace gpsimu_odom
 {
-void gpsImuNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBaselineRTK::ConstPtr &msg)
+void estimationNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBaselineRTK::ConstPtr &msg)
 {
   double ttime=msg->tSolution.secondsOfWeek + msg->tSolution.fractionOfSecond
       + msg->tSolution.week * sec_in_week - msg->deltRSec;
@@ -41,11 +41,6 @@ void gpsImuNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBase
       //  { std::cout << "Negative times!" << "gps: " << ttime << "  imu: "<< tLastProcessed <<std::endl;}
       if(isCalibrated && dtLastProc>0)
       {
-        /*//Run CF 
-        //Fimu = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI) * Fimu;
-        Fimu = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI,xState,l_imu) * Fimu;
-        //Fimu=getNumderivF(double(1e-9), dtLastProc, xState, accelMeasOrig, attRateMeasOrig,RBI, l_imu)*Fimu;
-        runCF(dtLastProc);*/
         runUKF(dtLastProc);
 
         //Publish messages
@@ -71,7 +66,7 @@ void gpsImuNode::singleBaselineRTKCallback(const gbx_ros_bridge_msgs::SingleBase
 }
 
 
-void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::ConstPtr &msg)
+void estimationNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::ConstPtr &msg)
 {
     static int rCCalibCounter=0;
     static int calibSamples=20;
@@ -124,13 +119,9 @@ void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::Const
         {
             validA2Dtest=true;
             //Store constrained baseline vector in I frame
-            Eigen::Vector3d constrainedBaselineECEF(msg->rx,msg->ry,msg->rz);
+            const Eigen::Vector3d constrainedBaselineECEF(msg->rx,msg->ry,msg->rz);
             internal_rC = R_G2wrw*constrainedBaselineECEF;
-            internal_rC=unit3(internal_rC);
-            //Eigen::Quaterniond q0 = Eigen::AngleAxisd(0, Eigen::Vector3d::UnitX())
-            //    * Eigen::AngleAxisd(0, Eigen::Vector3d::UnitY())
-            //    * Eigen::AngleAxisd(pi/2+6.2-msg->azAngle, Eigen::Vector3d::UnitZ());
-            //RBI = rotMatFromQuat(q0).transpose();
+            internal_rC = unit3(internal_rC);
         }else
         {
             validA2Dtest=false;
@@ -146,11 +137,6 @@ void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::Const
           //  { std::cout << "Negative times!" << "gps: " << ttime << "  imu: "<< tLastProcessed <<std::endl;}
           if(isCalibrated && dtLastProc>0)
           {
-            /*//Run CF
-            //Fimu = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI) * Fimu;
-            Fimu = getFmatrixCF(dtLastProc,imuAccelMeas,imuAttRateMeas,RBI,xState,l_imu) * Fimu;
-            //Fimu=getNumderivF(double(1e-9), dtLastProc, xState, accelMeasOrig, attRateMeasOrig,RBI, l_imu)*Fimu;
-            runCF(dtLastProc);*/
             runUKF(dtLastProc);
 
             //Publish messages
@@ -176,14 +162,14 @@ void gpsImuNode::attitude2DCallback(const gbx_ros_bridge_msgs::Attitude2D::Const
 }
 
 
-void gpsImuNode::navsolCallback(const gbx_ros_bridge_msgs::NavigationSolution::ConstPtr &msg)
+void estimationNode::navsolCallback(const gbx_ros_bridge_msgs::NavigationSolution::ConstPtr &msg)
 {
   dtRX_meters = msg->deltatRxMeters;
 }
 
 
 //Get reference RRT time and measurement offset time from Observables message
-void gpsImuNode::tOffsetCallback(const gbx_ros_bridge_msgs::ObservablesMeasurementTime::ConstPtr &msg)
+void estimationNode::tOffsetCallback(const gbx_ros_bridge_msgs::ObservablesMeasurementTime::ConstPtr &msg)
 {
   if(msg->tOffset.week<1e-9)
     {return;}
@@ -194,7 +180,7 @@ void gpsImuNode::tOffsetCallback(const gbx_ros_bridge_msgs::ObservablesMeasureme
 
 
 //Get upper 32 bits of tIndex counter
-void gpsImuNode::imuConfigCallback(const gbx_ros_bridge_msgs::ImuConfig::ConstPtr &msg)
+void estimationNode::imuConfigCallback(const gbx_ros_bridge_msgs::ImuConfig::ConstPtr &msg)
 {
   ROS_INFO("Config message received.");
   imuConfigAccel = msg->lsbToMetersPerSecSq; //scaling to m/s2 from "non-engineering units"
@@ -208,7 +194,7 @@ void gpsImuNode::imuConfigCallback(const gbx_ros_bridge_msgs::ImuConfig::ConstPt
 
 
 //Publish local_odom and mavros mocap
-void gpsImuNode::publishOdomAndMocap()
+void estimationNode::publishOdomAndMocap()
 {
 
     //Update rotation matrix and force orthonormality  

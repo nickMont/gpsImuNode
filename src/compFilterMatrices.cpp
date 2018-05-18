@@ -1,11 +1,11 @@
-#include "gpsImuNode.hpp"
+#include "estimationNode.hpp"
 #include <Eigen/SVD>
 
 
 namespace gpsimu_odom
 {
 //Runs the CF
-void gpsImuNode::runCF(double dt0)
+void estimationNode::runCF(double dt0)
 {
 	//std::cout<<"RUNNING CF, dt="<<dt0<<std::endl;
 	Eigen::Matrix<double,15,15> pbar0;
@@ -27,7 +27,7 @@ void gpsImuNode::runCF(double dt0)
 
 
 //CF propagation step
-void gpsImuNode::kfCFPropagate(const double dt0, const Eigen::Matrix<double,15,15> P0,
+void estimationNode::kfCFPropagate(const double dt0, const Eigen::Matrix<double,15,15> P0,
     const Eigen::Matrix<double,15,1> x0, const Eigen::Matrix<double,15,15> F0,
     const Eigen::Matrix3d RR, const Eigen::Matrix<double,6,6> Qk,
     Eigen::Matrix<double,15,15> &Pbar, Eigen::Matrix<double,15,1> &xBar)
@@ -40,7 +40,7 @@ void gpsImuNode::kfCFPropagate(const double dt0, const Eigen::Matrix<double,15,1
 
 
 //CF measurement step for two antennas
-void gpsImuNode::kfCFMeasure2(const Eigen::Matrix<double,15,1> xBar, const Eigen::Vector3d drI, const Eigen::Vector3d drS2P,
+void estimationNode::kfCFMeasure2(const Eigen::Matrix<double,15,1> xBar, const Eigen::Vector3d drI, const Eigen::Vector3d drS2P,
     const Eigen::Matrix3d RR, const Eigen::Matrix<double,15,15> Pbar,
     const Eigen::Vector3d Lcg2p, const Eigen::Vector3d Ls2p, const Eigen::Matrix<double,6,6> Rbar,
     Eigen::Matrix<double,15,15> &Pkp1, Eigen::Matrix<double,15,1> &xkp1)
@@ -63,7 +63,7 @@ void gpsImuNode::kfCFMeasure2(const Eigen::Matrix<double,15,1> xBar, const Eigen
 
 
 //Dynamic nonlinear propagation for IMU data. NOTE: THIS WANTS THE ORIGINAL fB, wB WITHOUT GRAVITY OR ROTMAT CORRECTION
-Eigen::Matrix<double,15,1> gpsImuNode::fdyn(const Eigen::Matrix<double,15,1> x0, const double dt,
+Eigen::Matrix<double,15,1> estimationNode::fdyn(const Eigen::Matrix<double,15,1> x0, const double dt,
 	const Eigen::Vector3d fB0, const Eigen::Vector3d wB0, const Eigen::Matrix3d RR, const Eigen::Vector3d lAB)
 {
 	Eigen::Matrix<double,15,1> x1 = x0;
@@ -92,7 +92,7 @@ Eigen::Matrix<double,15,1> gpsImuNode::fdyn(const Eigen::Matrix<double,15,1> x0,
 
 
 //Generates F matrix from imu data
-Eigen::Matrix<double,15,15> gpsImuNode::getFmatrixCF(const double dt, const Eigen::Vector3d fB,
+Eigen::Matrix<double,15,15> estimationNode::getFmatrixCF(const double dt, const Eigen::Vector3d fB,
 	const Eigen::Vector3d omegaB, const Eigen::Matrix3d RR)
 {
 	//A is continuous time, Fk is discrete time
@@ -112,7 +112,7 @@ Eigen::Matrix<double,15,15> gpsImuNode::getFmatrixCF(const double dt, const Eige
 
 
 //Generates F matrix from imu data
-Eigen::Matrix<double,15,15> gpsImuNode::getFmatrixCF(const double dt, const Eigen::Vector3d fB,
+Eigen::Matrix<double,15,15> estimationNode::getFmatrixCF(const double dt, const Eigen::Vector3d fB,
 	const Eigen::Vector3d omegaB, const Eigen::Matrix3d RR, const Eigen::Matrix<double,15,1> state0,
 	const Eigen::Vector3d Lab)
 {
@@ -130,7 +130,7 @@ Eigen::Matrix<double,15,15> gpsImuNode::getFmatrixCF(const double dt, const Eige
 }
 
 //Grabs noise matrix
-Eigen::Matrix<double,15,6> gpsImuNode::getGammakmatrixCF(const double dt, const Eigen::Matrix3d RR)
+Eigen::Matrix<double,15,6> estimationNode::getGammakmatrixCF(const double dt, const Eigen::Matrix3d RR)
 {
 	Eigen::Matrix<double,15,6> Gammak = Eigen::Matrix<double,15,6>::Zero();
 	Eigen::Matrix3d eye3 = Eigen::Matrix3d::Identity();
@@ -144,7 +144,7 @@ Eigen::Matrix<double,15,6> gpsImuNode::getGammakmatrixCF(const double dt, const 
 
 
 //Gets measurement equation for one antenna
-Eigen::Matrix<double,3,15> gpsImuNode::getHkmatrixOneAntennaCF(const Eigen::Vector3d Lab, const Eigen::Matrix3d RR)
+Eigen::Matrix<double,3,15> estimationNode::getHkmatrixOneAntennaCF(const Eigen::Vector3d Lab, const Eigen::Matrix3d RR)
 {
 	Eigen::Matrix<double,3,15> Hk = Eigen::Matrix<double,3,15>::Zero();
 	Hk.block(0,0,3,3)=Eigen::Matrix3d::Identity();
@@ -154,7 +154,7 @@ Eigen::Matrix<double,3,15> gpsImuNode::getHkmatrixOneAntennaCF(const Eigen::Vect
 
 
 //Gets measurement equation for two antennas
-Eigen::Matrix<double,6,15> gpsImuNode::getHkmatrixTwoAntennaCF(const Eigen::Vector3d Limu,
+Eigen::Matrix<double,6,15> estimationNode::getHkmatrixTwoAntennaCF(const Eigen::Vector3d Limu,
 	const Eigen::Vector3d Ls2p, const Eigen::Matrix3d RR)
 {
 	Eigen::Matrix<double,6,15> Hk = Eigen::Matrix<double,6,15>::Zero();
@@ -164,7 +164,7 @@ Eigen::Matrix<double,6,15> gpsImuNode::getHkmatrixTwoAntennaCF(const Eigen::Vect
 }
 
 
-Eigen::Matrix<double,6,15> gpsImuNode::getHkMatrixTwoAntennaTrueState(const Eigen::Vector3d Ls2p,
+Eigen::Matrix<double,6,15> estimationNode::getHkMatrixTwoAntennaTrueState(const Eigen::Vector3d Ls2p,
 	const Eigen::Matrix3d RR, const::Eigen::Vector3d Lcg2p)
 {
 	Eigen::Matrix<double,6,15> Hk = Eigen::Matrix<double,6,15>::Zero();
@@ -177,7 +177,7 @@ Eigen::Matrix<double,6,15> gpsImuNode::getHkMatrixTwoAntennaTrueState(const Eige
 
 
 
-void gpsImuNode::runUKF(double dt0)
+void estimationNode::runUKF(double dt0)
 {
 	//std::cout<<"RUNNING CF, dt="<<dt0<<std::endl;
 	Eigen::Matrix<double,15,15> pbar0;
@@ -199,7 +199,7 @@ void gpsImuNode::runUKF(double dt0)
 }
 
 
-void gpsImuNode::runUKF_fromBuffer(double dt0)
+void estimationNode::runUKF_fromBuffer(double dt0)
 {
 	//std::cout<<"RUNNING CF, dt="<<dt0<<std::endl;
 	Eigen::Matrix<double,15,15> pbar0;
@@ -221,7 +221,7 @@ void gpsImuNode::runUKF_fromBuffer(double dt0)
 
 
 //Dynamic nonlinear propagation for IMU data. NOTE: This handles noise and noise rate for gyro/accel
-Eigen::Matrix<double,15,1> gpsImuNode::fdynSPKF(const Eigen::Matrix<double,15,1> x0, const double dt,
+Eigen::Matrix<double,15,1> estimationNode::fdynSPKF(const Eigen::Matrix<double,15,1> x0, const double dt,
 	const Eigen::Vector3d fB0, const Eigen::Matrix<double,12,1> vk, const Eigen::Vector3d wB0,
 	const Eigen::Matrix3d RR, const Eigen::Vector3d lAB)
 {
@@ -257,7 +257,7 @@ Eigen::Matrix<double,15,1> gpsImuNode::fdynSPKF(const Eigen::Matrix<double,15,1>
 }
 
 //True state nonlinear measurement equation. lcg2p assumed a unit3 already
-Eigen::Matrix<double,6,1> gpsImuNode::hnonlinSPKF(const Eigen::Matrix<double,15,1> x0,
+Eigen::Matrix<double,6,1> estimationNode::hnonlinSPKF(const Eigen::Matrix<double,15,1> x0,
 	const Eigen::Matrix3d RR, const Eigen::Vector3d ls2p, const Eigen::Vector3d lcg2p,
 	const Eigen::Matrix<double,6,1> vk)
 {
@@ -272,7 +272,7 @@ Eigen::Matrix<double,6,1> gpsImuNode::hnonlinSPKF(const Eigen::Matrix<double,15,
 
 
 //Hardcoding matrix sizes instead of doing dynamic resizing to preserve speed
-void gpsImuNode::spkfPropagate15(const Eigen::Matrix<double,15,1> x0, const Eigen::Matrix<double,15,15> P0,
+void estimationNode::spkfPropagate15(const Eigen::Matrix<double,15,1> x0, const Eigen::Matrix<double,15,15> P0,
 	const Eigen::Matrix<double,12,12> Q, const double dt, const Eigen::Vector3d fB0, const Eigen::Vector3d wB0,
 	const Eigen::Matrix3d RR, const Eigen::Vector3d lAB, Eigen::Matrix<double,15,15> &Pkp1, Eigen::Matrix<double,15,1> &xkp1)
 {
@@ -342,7 +342,7 @@ void gpsImuNode::spkfPropagate15(const Eigen::Matrix<double,15,1> x0, const Eige
 
 //Hardcoding matrix sizes instead of doing dynamic resizing to preserve speed
 //lcg2p, ls2p are the real values of the antenna locations in the body.  ls2p will be unit3'd inside of this function.
-void gpsImuNode::spkfMeasure6(const Eigen::Matrix<double,15,1> x0, const Eigen::Matrix<double,15,15> P0,
+void estimationNode::spkfMeasure6(const Eigen::Matrix<double,15,1> x0, const Eigen::Matrix<double,15,15> P0,
 	const Eigen::Matrix<double,6,6> R, const Eigen::Vector3d rI_measurement, const Eigen::Vector3d rCu_measurement,
 	const Eigen::Matrix3d RR, const Eigen::Vector3d lcg2p, const Eigen::Vector3d ls2p,
 	Eigen::Matrix<double,15,15> &Pkp1, Eigen::Matrix<double,15,1> &xkp1)
@@ -419,7 +419,7 @@ void gpsImuNode::spkfMeasure6(const Eigen::Matrix<double,15,1> x0, const Eigen::
 
 
 //Rotation matrix
-Eigen::Matrix3d gpsImuNode::euler2dcm312(const Eigen::Vector3d ee)
+Eigen::Matrix3d estimationNode::euler2dcm312(const Eigen::Vector3d ee)
 {
   	const double cPhi = cos(ee(0));
   	const double sPhi = sin(ee(0));
@@ -436,7 +436,7 @@ Eigen::Matrix3d gpsImuNode::euler2dcm312(const Eigen::Vector3d ee)
 
 
 //rotate by hatmat(gammavec) to new RBI
-Eigen::Matrix3d gpsImuNode::updateRBIfromGamma(const Eigen::Matrix3d R0, const Eigen::Vector3d gamma)
+Eigen::Matrix3d estimationNode::updateRBIfromGamma(const Eigen::Matrix3d R0, const Eigen::Vector3d gamma)
 {
     //return (Eigen::Matrix3d::Identity()+hatmat(gamma))*R0;
     //return (rotMatFromEuler(gamma))*R0;
@@ -445,7 +445,7 @@ Eigen::Matrix3d gpsImuNode::updateRBIfromGamma(const Eigen::Matrix3d R0, const E
 
 
 //True state nonlinear measurement equation. lcg2p assumed a unit3 already
-Eigen::Matrix<double,6,1> gpsImuNode::hnonlin2antenna(const Eigen::Matrix<double,15,1> x0,
+Eigen::Matrix<double,6,1> estimationNode::hnonlin2antenna(const Eigen::Matrix<double,15,1> x0,
 	const Eigen::Matrix3d RR, const Eigen::Vector3d ls2p, const Eigen::Vector3d lcg2p)
 {
 	Eigen::Matrix<double,6,1> zhat;
@@ -462,7 +462,7 @@ Eigen::Matrix<double,6,1> gpsImuNode::hnonlin2antenna(const Eigen::Matrix<double
 
 
 //Cross product equivalent.  Named this way for consistency with nn_imu_dat
-Eigen::Matrix3d gpsImuNode::hatmat(const Eigen::Vector3d v1)
+Eigen::Matrix3d estimationNode::hatmat(const Eigen::Vector3d v1)
 {
 	Eigen::Matrix3d f = Eigen::MatrixXd::Zero(3,3);
 	f(0,1)=-v1(2); f(0,2)=v1(1);
@@ -473,7 +473,7 @@ Eigen::Matrix3d gpsImuNode::hatmat(const Eigen::Vector3d v1)
 
 
 //Wabha solver.  Expects vI, vB as nx3 matrices with n sample vectors
-Eigen::Matrix3d gpsImuNode::rotMatFromWahba(const Eigen::VectorXd weights,
+Eigen::Matrix3d estimationNode::rotMatFromWahba(const Eigen::VectorXd weights,
 	const::Eigen::MatrixXd vI, const::Eigen::MatrixXd vB)
 {
 	int n=weights.size();
@@ -492,13 +492,13 @@ Eigen::Matrix3d gpsImuNode::rotMatFromWahba(const Eigen::VectorXd weights,
 }
 
 
-Eigen::Vector3d gpsImuNode::unit3(const Eigen::Vector3d v1)
+Eigen::Vector3d estimationNode::unit3(const Eigen::Vector3d v1)
 {
 	return v1/v1.norm();
 }
 
 
-double gpsImuNode::symmetricSaturationDouble(const double inval, const double maxval)
+double estimationNode::symmetricSaturationDouble(const double inval, const double maxval)
 {
 	//Handling this with an error to avoid needing an abs() each call
 	if(maxval<0)
@@ -516,7 +516,7 @@ double gpsImuNode::symmetricSaturationDouble(const double inval, const double ma
 }
 
 
-void gpsImuNode::saturateBiases(const double baMax, const double bgMax)
+void estimationNode::saturateBiases(const double baMax, const double bgMax)
 {
 	//Saturation
 	for(int ij=0; ij<3; ij++)
@@ -531,7 +531,7 @@ void gpsImuNode::saturateBiases(const double baMax, const double bgMax)
 
 
 
-Eigen::Matrix3d gpsImuNode::orthonormalize(const Eigen::Matrix3d inmat)
+Eigen::Matrix3d estimationNode::orthonormalize(const Eigen::Matrix3d inmat)
 {
 	Eigen::Matrix3d outmat;
 	Eigen::Matrix3d U,V;
@@ -545,7 +545,7 @@ Eigen::Matrix3d gpsImuNode::orthonormalize(const Eigen::Matrix3d inmat)
 
 //Adapted with minor changes from
 //http://www.euclideanspace.com/maths/geometry/rotations/conversions/matrixToQuaternion/index.htm
-Eigen::Quaterniond gpsImuNode::rotmat2quat(const Eigen::Matrix3d RR)
+Eigen::Quaterniond estimationNode::rotmat2quat(const Eigen::Matrix3d RR)
 {
 	double trace = RR.trace();
 	Eigen::Matrix<double,4,1> q;
@@ -590,7 +590,7 @@ Eigen::Quaterniond gpsImuNode::rotmat2quat(const Eigen::Matrix3d RR)
 }
 
 
-Eigen::Matrix3d gpsImuNode::rotMatFromQuat(const Eigen::Quaterniond qq)
+Eigen::Matrix3d estimationNode::rotMatFromQuat(const Eigen::Quaterniond qq)
 {
 	const double xx=qq.x();
 	const double yy=qq.y();
@@ -607,7 +607,7 @@ Eigen::Matrix3d gpsImuNode::rotMatFromQuat(const Eigen::Quaterniond qq)
 }
 
 
-Eigen::Matrix3d gpsImuNode::rotMatFromEuler(Eigen::Vector3d ee)
+Eigen::Matrix3d estimationNode::rotMatFromEuler(Eigen::Vector3d ee)
 {
   const double phi=ee(0);
   const double theta=ee(1);
@@ -621,7 +621,7 @@ Eigen::Matrix3d gpsImuNode::rotMatFromEuler(Eigen::Vector3d ee)
 
 
 //Numerical differentiation from central difference.  Eigen doesn't like complex stepping.
-Eigen::Matrix<double,15,15> gpsImuNode::getNumderivF(const double dv, const double dt,
+Eigen::Matrix<double,15,15> estimationNode::getNumderivF(const double dv, const double dt,
 	const Eigen::Matrix<double,15,1> x0,const Eigen::Vector3d fB0, const Eigen::Vector3d wB0,
 	const Eigen::Matrix3d RR, const Eigen::Vector3d lAB)
 {
