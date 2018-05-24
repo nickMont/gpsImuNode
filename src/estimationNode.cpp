@@ -119,6 +119,16 @@ estimationNode::estimationNode(ros::NodeHandle &nh)
   Rk = P6diagElements.asDiagonal();
   Qk12 = Eigen::Matrix<double,12,12>::Zero();
 
+  /*//gpsMeas class tester
+  Eigen::Vector3d testvec(1.0,2.0,3.0);
+  gpsMeas g2;
+  g2.setMeas(0.0,&testvec,&testvec);
+  Eigen::Vector3d out1,out2;
+  double t2;
+  g2.getMeas(t2,out1,out2);
+  std::cout<<t2<<std::endl<<out1<<std::endl<<out2<<std::endl;*/
+    
+
   //12x12 Q covariance
   const double dtIMU=1.0/73.25; //from (rostopic hz /phoenix/imu -r 10)/10
   const double alphaA = exp(-dtIMU/tauA);

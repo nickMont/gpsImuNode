@@ -21,63 +21,38 @@
 namespace gpsimu_odom
 {
 class gpsImu
+{
 	public:
-	
-	Eigen::Matrix<double,15,1> fdyn(const Eigen::Matrix<double,15,1> x0, const double dt,
-    	const Eigen::Vector3d fB0, const Eigen::Vector3d wB0, const Eigen::Matrix3d RR,
-    	const Eigen::Vector3d lAB);
-  	Eigen::Matrix<double,6,1> hnonlin2antenna(const Eigen::Matrix<double,15,1> x0,
-    	const Eigen::Matrix3d RR, const Eigen::Vector3d ls2p, const Eigen::Vector3d lcg2p);
-  	Eigen::Matrix<double,15,15> getFmatrixCF(const double dt, const Eigen::Vector3d fB,
-    	const Eigen::Vector3d omegaB, const Eigen::Matrix3d RR);
-  	Eigen::Matrix<double,15,15> getFmatrixCF(const double dt, const Eigen::Vector3d fB,
-    	const Eigen::Vector3d omegaB, const Eigen::Matrix3d RR, const Eigen::Matrix<double,15,1> state0,
-    	const Eigen::Vector3d Lab);
-  	Eigen::Matrix<double,15,6> getGammakmatrixCF(const double dt, const Eigen::Matrix3d RR);
-  	Eigen::Matrix<double,3,15> getHkmatrixOneAntennaCF(const Eigen::Vector3d Lab, const Eigen::Matrix3d RR);
-  	Eigen::Matrix<double,6,15> getHkmatrixTwoAntennaCF(const Eigen::Vector3d Limu,
-    	const Eigen::Vector3d Ls2p, const Eigen::Matrix3d RR);
-  	Eigen::Matrix<double,6,15> getHkMatrixTwoAntennaTrueState(const Eigen::Vector3d Ls2p,
-    	const Eigen::Matrix3d RR, const::Eigen::Vector3d Lcg2p);
-  	void kfCFPropagate(const double dt0, const Eigen::Matrix<double,15,15> P0,
-    	const Eigen::Matrix<double,15,1> x0, const Eigen::Matrix<double,15,15> F0,
-    	const Eigen::Matrix3d RR, const Eigen::Matrix<double,6,6> Qk,
-    	Eigen::Matrix<double,15,15> &Pbar, Eigen::Matrix<double,15,1> &xBar);
-  	void kfCFMeasure2(const Eigen::Matrix<double,15,1> xBar, const Eigen::Vector3d drI, const Eigen::Vector3d drS2P,
-    	const Eigen::Matrix3d RR, const Eigen::Matrix<double,15,15> Pbar,
-    	const Eigen::Vector3d Lcg2p, const Eigen::Vector3d Ls2p, const Eigen::Matrix<double,6,6> Rbar,
-    	Eigen::Matrix<double,15,15> &Pkp1, Eigen::Matrix<double,15,1> &xkp1);
-  	void runCF(const double dt0);
-  	Eigen::Matrix3d updateRBIfromGamma(const Eigen::Matrix3d R0, const Eigen::Vector3d gamma);
-  	Eigen::Matrix3d hatmat(const Eigen::Vector3d v1);
-  	Eigen::Matrix3d rotMatFromEuler(Eigen::Vector3d ee);
-  	Eigen::Matrix3d rotMatFromWahba(const Eigen::VectorXd weights, const::Eigen::MatrixXd vI,
-    	const::Eigen::MatrixXd vB);
-  	Eigen::Quaterniond rotmat2quat(const Eigen::Matrix3d RR);
-  	Eigen::Vector3d unit3(const Eigen::Vector3d v1);
-	Eigen::Matrix3d orthonormalize(const Eigen::Matrix3d inmat);
-  	Eigen::Matrix3d rotMatFromQuat(const Eigen::Quaterniond qq);
-  	void saturateBiases(const double baMax, const double bgMax);
-  	double symmetricSaturationDouble(const double inval, const double maxval);
-  	Eigen::Matrix3d euler2dcm312(const Eigen::Vector3d ee);
-  	void spkfPropagate15(const Eigen::Matrix<double,15,1> x0, const Eigen::Matrix<double,15,15> P0,
-    	const Eigen::Matrix<double,12,12> Q, const double dt, const Eigen::Vector3d fB0, const Eigen::Vector3d wB0,
-    	const Eigen::Matrix3d RR, const Eigen::Vector3d lAB, Eigen::Matrix<double,15,15> &Pkp1, Eigen::Matrix<double,15,1> &xkp1);
-  	void spkfMeasure6(const Eigen::Matrix<double,15,1> x0, const Eigen::Matrix<double,15,15> P0,
-    	const Eigen::Matrix<double,6,6> R, const Eigen::Vector3d rI_measurement, const Eigen::Vector3d rCu_measurement,
-    	const Eigen::Matrix3d RR, const Eigen::Vector3d lcg2p, const Eigen::Vector3d ls2p,
-    	Eigen::Matrix<double,15,15> &Pkp1, Eigen::Matrix<double,15,1> &xkp1);
-  	Eigen::Matrix<double,15,15> getNumderivF(const double dv, const double dt,
-    	const Eigen::Matrix<double,15,1> x0,const Eigen::Vector3d fB0, const Eigen::Vector3d wB0,
-    	const Eigen::Matrix3d RR, const Eigen::Vector3d lAB);
-  	Eigen::Matrix<double,6,1> hnonlinSPKF(const Eigen::Matrix<double,15,1> x0,
-    	const Eigen::Matrix3d RR, const Eigen::Vector3d ls2p, const Eigen::Vector3d lcg2p,
-   	 	const Eigen::Matrix<double,6,1> vk);
-  	Eigen::Matrix<double,15,1> fdynSPKF(const Eigen::Matrix<double,15,1> x0, const double dt,
-    	const Eigen::Vector3d fB0, const Eigen::Matrix<double,12,1> vk, const Eigen::Vector3d wB0,
-    	const Eigen::Matrix3d RR, const Eigen::Vector3d lAB);
-  	void runUKF(double dt0); 
-	void runUKF_fromBuffer(double dt0);
+      	Eigen::Matrix3d updateRBIfromGamma(const Eigen::Matrix3d R0, const Eigen::Vector3d gamma);
+      	Eigen::Matrix3d hatmat(const Eigen::Vector3d v1);
+        Eigen::Matrix3d rotMatFromEuler(Eigen::Vector3d ee);
+        Eigen::Matrix3d rotMatFromWahba(const Eigen::VectorXd weights, const::Eigen::MatrixXd vI,
+    	   const::Eigen::MatrixXd vB);
+        Eigen::Quaterniond rotmat2quat(const Eigen::Matrix3d RR);
+        Eigen::Vector3d unit3(const Eigen::Vector3d v1);
+        Eigen::Matrix3d orthonormalize(const Eigen::Matrix3d inmat);
+        Eigen::Matrix3d rotMatFromQuat(const Eigen::Quaterniond qq);
+        void saturateBiases(const double baMax, const double bgMax);
+        double symmetricSaturationDouble(const double inval, const double maxval);
+        Eigen::Matrix3d euler2dcm312(const Eigen::Vector3d ee);
+        void spkfPropagate15(const Eigen::Matrix<double,15,1> *x0, const Eigen::Matrix<double,15,15> P0,
+            const Eigen::Matrix<double,12,12> Q, const double dt, const Eigen::Vector3d fB0, const Eigen::Vector3d wB0,
+            const Eigen::Matrix3d RR, const Eigen::Vector3d lAB, Eigen::Matrix<double,15,15> &Pkp1, Eigen::Matrix<double,15,1> &xkp1);
+        void spkfMeasure6(const Eigen::Matrix<double,15,1> *x0, const Eigen::Matrix<double,15,15> P0,
+            const Eigen::Matrix<double,6,6> R, const Eigen::Vector3d rI_measurement, const Eigen::Vector3d rCu_measurement,
+    	    const Eigen::Matrix3d RR, const Eigen::Vector3d lcg2p, const Eigen::Vector3d ls2p,
+    	    Eigen::Matrix<double,15,15> &Pkp1, Eigen::Matrix<double,15,1> &xkp1);
+  	    Eigen::Matrix<double,15,15> getNumderivF(const double dv, const double dt,
+    	    const Eigen::Matrix<double,15,1> x0,const Eigen::Vector3d fB0, const Eigen::Vector3d wB0,
+    	    const Eigen::Matrix3d RR, const Eigen::Vector3d lAB);
+  	    Eigen::Matrix<double,6,1> hnonlinSPKF(const Eigen::Matrix<double,15,1> *x0,
+     	    const Eigen::Matrix3d RR, const Eigen::Vector3d ls2p, const Eigen::Vector3d lcg2p,
+   	 	    const Eigen::Matrix<double,6,1> vk);
+  	    Eigen::Matrix<double,15,1> fdynSPKF(const Eigen::Matrix<double,15,1> *x0, const double dt,
+    	   const Eigen::Vector3d fB0, const Eigen::Matrix<double,12,1> vk, const Eigen::Vector3d wB0,
+    	   const Eigen::Matrix3d RR, const Eigen::Vector3d lAB);
+  	    void runUKF(double dt0); 
+	    void runUKF_fromBuffer(double dt0);
 
 
 	private:

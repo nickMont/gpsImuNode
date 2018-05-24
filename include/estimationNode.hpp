@@ -17,6 +17,7 @@
 
 #include "filter.h"
 #include "filterTW.h"
+#include "classes.h"
 
 namespace gpsimu_odom
 {
@@ -140,20 +141,6 @@ class estimationNode
 
   bool tryToUseBuffer;
 
-};
-
-
-class gpsTime
-{
-  public:
-    gpsTime(){week=0.0;sec=0.0;fracSec=0.0;}
-    gpsTime(double wk,double se,double fSec){week=wk;sec=se;fracSec=fSec;}
-    void getTime(double &wk, double &se, double &fSec){wk=week;se=sec;fSec=fracSec;}
-    void setTime(double wk,double se,double fSec){week=wk;sec=se;fracSec=fSec;}
-    double toSec(){return (week*604800.0+sec+fracSec);}
-
-  private:
-    double week, sec, fracSec;
 };
 
 } // gps_odom
