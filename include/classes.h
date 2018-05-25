@@ -36,16 +36,17 @@ class gpsMeas
 	public:
 		gpsMeas() {tSec_=0.0; rPrimary_=Eigen::Vector3d::Zero(); rS2P_=Eigen::Vector3d::Zero();
 			Recef2wrw_=Eigen::Matrix3d::Identity();}
-		gpsMeas(const double t, const Eigen::Vector3d *rP, const Eigen::Vector3d *rC, const Eigen::Matrix3d *R)
-			{tSec_=t; rPrimary_=*rP; rS2P_=*rC; Recef2wrw_=*R;};
-		void setRotMats(const Eigen::Matrix3d *Rwrw, const Eigen::Matrix3d *Recef2enu)
-			{Recef2wrw_ = *Rwrw * (*Recef2enu); };
-		void setMeas(const double t, const Eigen::Vector3d *rP, const Eigen::Vector3d *rC)
-			{tSec_=t; rPrimary_=*rP; rS2P_=*rC;};
+		gpsMeas(const double t, const Eigen::Vector3d &rP, const Eigen::Vector3d &rC, const Eigen::Matrix3d &R)
+			{tSec_=t; rPrimary_=rP; rS2P_=rC; Recef2wrw_=R;};
+		void setRotMats(const Eigen::Matrix3d &Rwrw, const Eigen::Matrix3d &Recef2enu)
+			{Recef2wrw_ = Rwrw * Recef2enu; }
+		void setMeas(const double t, const Eigen::Vector3d &rP, const Eigen::Vector3d &rC)
+			{tSec_=t; rPrimary_=rP; rS2P_=rC;}
 		void getMeasEcef(double &t, Eigen::Vector3d &rP, Eigen::Vector3d &rC)
-			{t=tSec_; rP=rPrimary_; rC=rS2P_;}
+			const {t=tSec_; rP=rPrimary_; rC=rS2P_;}
 		void getMeasEnu(double &t, Eigen::Vector3d &rI, Eigen::Vector3d &rC)
-			{t=tSec_; rI=Recef2wrw_*rPrimary_; rC=Recef2wrw_*rS2P_;}
+			const {t=tSec_; rI=Recef2wrw_*rPrimary_; rC=Recef2wrw_*rS2P_;}
+		void getTime(double &t) const {t=tSec_;}
 	private:
 		double tSec_;
 		Eigen::Vector3d rPrimary_, rS2P_;
@@ -57,12 +58,13 @@ class imuMeas
 {
 	public:
 		imuMeas(){tSec_=0.0; a_=Eigen::Vector3d::Zero(); wB_=Eigen::Vector3d::Zero();}
-		imuMeas(const double t, const Eigen::Vector3d *aa, const Eigen::Vector3d *ww)
-			{tSec_=t; a_=*aa; wB_=*ww;};
-		void setMeas(const double t, const Eigen::Vector3d *aIn, const Eigen::Vector3d *wIn)
-			{tSec_=t; a_=*aIn; wB_=*wIn;};
+		imuMeas(const double t, const Eigen::Vector3d &aa, const Eigen::Vector3d &ww)
+			{tSec_=t; a_=aa; wB_=ww;};
+		void setMeas(const double t, const Eigen::Vector3d &aIn, const Eigen::Vector3d &wIn)
+			{tSec_=t; a_=aIn; wB_=wIn;};
 		void getMeas(double &t, Eigen::Vector3d &aOut, Eigen::Vector3d &wOut)
-			{t=tSec_; aOut=a_; wOut=wB_;}
+			const {t=tSec_; aOut=a_; wOut=wB_;}
+		void getTime(double &t) const {t=tSec_;}	
 	private:
 		double tSec_;
 		Eigen::Vector3d a_, wB_;
