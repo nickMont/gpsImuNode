@@ -12,20 +12,49 @@ void gpsImu::runUKF(const imuMeas &imu, const gpsMeas &gps)
 	double timu, tgps, dt0;
 	Eigen::Vector3d imuAccelMeas, imuAttRateMeas, internal_rI, internal_rC;
 	imu.getMeas(timu,imuAccelMeas,imuAttRateMeas); //Store current imu time in dt
-	gps.getMeasEnu(tgps, internal_rI, internal_rC);
+	gps.getMeas(tgps, internal_rI, internal_rC);
 	dt0=tgps-timu; //subtract off t0 to get actual dt
-	//Qk12 ~ (QK/dt_est)*dt
-	spkfPropagate15(xState,Pimu,(Qk12dividedByDt*dt0),dt0,imuAccelMeas,imuAttRateMeas,RBI_,Limu_, pbar0,xbar0);
-	updateRBIfromGamma(RBI_,xbar0.middleRows(6,3));
+	//Qk12_ ~ (QK/dt_est)*dt
+
+	std::cout << "dt: " << dt0 << std::endl;
+	spkfPropagate15(xState_,Pimu_,(Qk12dividedByDt_*dt0),dt0,imuAccelMeas,imuAttRateMeas,RBI_,Limu_, pbar0,xbar0);
+	RBI_=updateRBIfromGamma(RBI_,xbar0.middleRows(6,3));
 	xbar0.middleRows(6,3)=Eigen::Vector3d::Zero();
-	spkfMeasure6(xbar0, pbar0, Rk,internal_rI, internal_rC,RBI_,Lcg2p_,Ls2p_,Pimu,xState);
-	//spkfMeasure6(xbar0, pbar0, Rk,internal_rI, internal_rC,RBI_,Lcg2p_,Ls2p_,Pimu,xState);
-	//std::cout << "xstate after measurement" << std::endl << xState <<std::endl;
+	spkfMeasure6(xbar0, pbar0, Rk_,internal_rI, internal_rC,RBI_,Lcg2p_,Ls2p_,Pimu_,xState_);
+	//spkfMeasure6(xbar0, pbar0, Rk_,internal_rI, internal_rC,RBI_,Lcg2p_,Ls2p_,Pimu_,xState_);
+	//std::cout << "xState_ after measurement" << std::endl << xState_ <<std::endl;
 
 	//Test bias saturation to avoid OOM errors
-	saturateBiases(maxBa,maxBg);
+	saturateBiases(maxBa_,maxBg_);
 
-	//std::cout << "after measurement:" <<std::endl<<xState <<std::endl;
+	RBI_=orthonormalize(RBI_);
+
+	//std::cout << "after measurement:" <<std::endl<<xState_ <<std::endl;
+
+	return;
+}
+
+
+void gpsImu::runUKFpropagateOnly(const double lastTime, const imuMeas &imu)
+{
+	//std::cout<<"RUNNING CF, dt="<<dt0<<std::endl;
+	Eigen::Matrix<double,15,15> pbar0;
+	Eigen::Matrix<double,15,1>  xbar0;
+	double timu, dt0;
+	Eigen::Vector3d imuAccelMeas, imuAttRateMeas;
+	imu.getMeas(timu,imuAccelMeas,imuAttRateMeas); 
+	dt0=lastTime-timu; //subtract off t0 to get actual dt
+	//Qk12_ ~ (QK/dt_est)*dt
+	spkfPropagate15(xState_,Pimu_,(Qk12dividedByDt_*dt0),dt0,imuAccelMeas,imuAttRateMeas,RBI_,Limu_, pbar0,xbar0);
+	RBI_=updateRBIfromGamma(RBI_,xbar0.middleRows(6,3));
+	xbar0.middleRows(6,3)=Eigen::Vector3d::Zero();
+	xState_ = xbar0;
+	Pimu_ = pbar0;
+
+	//Test bias saturation to avoid OOM errors
+	saturateBiases(maxBa_,maxBg_);
+
+	RBI_=orthonormalize(RBI_);
 
 	return;
 }
@@ -61,8 +90,8 @@ Eigen::Matrix<double,15,1> gpsImu::fdynSPKF(const Eigen::Matrix<double,15,1> &x0
 	x1.topRows(3) = xkp1;
 	x1.middleRows(3,3) = vkp1;
 	x1.middleRows(6,3) = gammakp1;
-	x1.middleRows(9,3) = exp(-dt/tauA)*x1.middleRows(9,3) + vak2;
-	x1.bottomRows(3) = exp(-dt/tauG)*x1.bottomRows(3) + vgk2;
+	x1.middleRows(9,3) = exp(-dt/tauA_)*x1.middleRows(9,3) + vak2;
+	x1.bottomRows(3) = exp(-dt/tauG_)*x1.bottomRows(3) + vgk2;
 
 	return x1;
 }
@@ -136,17 +165,17 @@ void gpsImu::spkfPropagate15(const Eigen::Matrix<double,15,1> &x0, const Eigen::
 	//std::cout << "xbar:" <<std::endl<<xBar<<std::endl;
 
 	//Recombine for covariance
-	Eigen::Matrix<double,15,15> Pbarkp1;
-	Pbarkp1 = w_cov_center*(xStore.col(0)-xBar)*((xStore.col(0)-xBar).transpose());
+	Eigen::Matrix<double,15,15> PbaRk_p1;
+	PbaRk_p1 = w_cov_center*(xStore.col(0)-xBar)*((xStore.col(0)-xBar).transpose());
 	for(int ij=0; ij<2*nn; ij++)
 	{
-		Pbarkp1 = Pbarkp1 + w_cov_reg*(xStore.col(ij+1)-xBar)*((xStore.col(ij+1)-xBar).transpose());
+		PbaRk_p1 = PbaRk_p1 + w_cov_reg*(xStore.col(ij+1)-xBar)*((xStore.col(ij+1)-xBar).transpose());
 	}
-	//std::cout << "Pmax: " << Pbarkp1.maxCoeff() << std::endl;
+	//std::cout << "Pmax: " << PbaRk_p1.maxCoeff() << std::endl;
 
 	//outputs
 	xkp1 = xBar;
-	Pkp1 = Pbarkp1;
+	Pkp1 = PbaRk_p1;
 	//std::cout << "P:" <<std::endl << Pkp1 <<std::endl;
 	return;
 }
@@ -318,11 +347,11 @@ void gpsImu::saturateBiases(const double baMax, const double bgMax)
 	//Saturation
 	for(int ij=0; ij<3; ij++)
 	{
-		xState(ij+9) = symmetricSaturationDouble(xState(ij+9),baMax);
+		xState_(ij+9) = symmetricSaturationDouble(xState_(ij+9),baMax);
 	}
 	for(int ij=0; ij<3; ij++)
 	{
-		xState(ij+12) = symmetricSaturationDouble(xState(ij+12),bgMax);
+		xState_(ij+12) = symmetricSaturationDouble(xState_(ij+12),bgMax);
 	}
 }
 

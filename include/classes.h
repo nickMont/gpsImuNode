@@ -1,19 +1,7 @@
-#include <ros/ros.h>
-#include <tf2_ros/transform_broadcaster.h>
-#include <std_msgs/Float64.h>
-#include <geometry_msgs/Pose.h>
-#include <geometry_msgs/PoseStamped.h>
-#include <nav_msgs/Odometry.h>
 #include <Eigen/Geometry>
-#include <Eigen/Eigenvalues>
-#include <gbx_ros_bridge_msgs/SingleBaselineRTK.h>
-#include <gbx_ros_bridge_msgs/Attitude2D.h>
-#include <gbx_ros_bridge_msgs/Imu.h>
-#include <gbx_ros_bridge_msgs/ImuConfig.h>
-#include <gbx_ros_bridge_msgs/NavigationSolution.h>
-#include <gbx_ros_bridge_msgs/ObservablesMeasurementTime.h>
 #include <stdint.h>
 #include <cmath>
+//Might be wise to include a IFNDEF to this
 
 //Contains data storage classes
 
@@ -30,28 +18,21 @@ class gpsTime
 };
 
 
-//All measurements are expressed in ECEF
+//All measurements are expressed in local (WRW) frame
 class gpsMeas
 {
 	public:
-		gpsMeas() {tSec_=0.0; rPrimary_=Eigen::Vector3d::Zero(); rS2P_=Eigen::Vector3d::Zero();
-			Recef2wrw_=Eigen::Matrix3d::Identity();}
-		gpsMeas(const double t, const Eigen::Vector3d &rP, const Eigen::Vector3d &rC, const Eigen::Matrix3d &R)
-			{tSec_=t; rPrimary_=rP; rS2P_=rC; Recef2wrw_=R;};
-		void setRotMats(const Eigen::Matrix3d &Rwrw, const Eigen::Matrix3d &Recef2enu)
-			{Recef2wrw_ = Rwrw * Recef2enu; }
+		gpsMeas() {tSec_=0.0; rPrimary_=Eigen::Vector3d::Zero(); rS2P_=Eigen::Vector3d::Zero();}
+		gpsMeas(const double t, const Eigen::Vector3d &rP, const Eigen::Vector3d &rC)
+			{tSec_=t; rPrimary_=rP; rS2P_=rC;};
 		void setMeas(const double t, const Eigen::Vector3d &rP, const Eigen::Vector3d &rC)
 			{tSec_=t; rPrimary_=rP; rS2P_=rC;}
-		void getMeasEcef(double &t, Eigen::Vector3d &rP, Eigen::Vector3d &rC)
+		void getMeas(double &t, Eigen::Vector3d &rP, Eigen::Vector3d &rC)
 			const {t=tSec_; rP=rPrimary_; rC=rS2P_;}
-		void getMeasEnu(double &t, Eigen::Vector3d &rI, Eigen::Vector3d &rC)
-			const {t=tSec_; rI=Recef2wrw_*rPrimary_; rC=Recef2wrw_*rS2P_;}
 		void getTime(double &t) const {t=tSec_;}
 	private:
 		double tSec_;
 		Eigen::Vector3d rPrimary_, rS2P_;
-		Eigen::Matrix3d Recef2wrw_;
-		// vWRW = Recef2wrw_ * vECEF
 };
 
 class imuMeas

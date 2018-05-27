@@ -176,7 +176,6 @@ Eigen::Matrix<double,6,15> estimationNode::getHkMatrixTwoAntennaTrueState(const 
 
 
 
-
 void estimationNode::runUKF(double dt0)
 {
 	//std::cout<<"RUNNING CF, dt="<<dt0<<std::endl;
@@ -184,7 +183,7 @@ void estimationNode::runUKF(double dt0)
 	Eigen::Matrix<double,15,1>  xbar0;
 	//Qk12 ~ (QK/dt_est)*dt
 	spkfPropagate15(xState,Pimu,(Qk12dividedByDt*dt0),dt0,imuAccelMeas,imuAttRateMeas,RBI,l_imu, pbar0,xbar0);
-	updateRBIfromGamma(RBI,xbar0.middleRows(6,3));
+	RBI=updateRBIfromGamma(RBI,xbar0.middleRows(6,3));
 	xbar0.middleRows(6,3)=Eigen::Vector3d::Zero();
 	spkfMeasure6(xbar0, pbar0, Rk,internal_rI, internal_rC,RBI,l_cg2p,l_s2p,Pimu,xState);
 	//spkfMeasure6(xbar0, pbar0, Rk,internal_rI, internal_rC,RBI,l_cg2p,l_s2p,Pimu,xState);
@@ -192,6 +191,8 @@ void estimationNode::runUKF(double dt0)
 
 	//Test bias saturation to avoid OOM errors
 	saturateBiases(maxBa,maxBg);
+
+	RBI=orthonormalize(RBI);
 
 	//std::cout << "after measurement:" <<std::endl<<xState <<std::endl;
 
@@ -206,7 +207,7 @@ void estimationNode::runUKF_fromBuffer(double dt0)
 	Eigen::Matrix<double,15,1>  xbar0;
 	//Qk12 ~ (QK/dt_est)*dt
 	spkfPropagate15(xStatePrev,PimuPrev,(Qk12dividedByDt*dt0),dt0,imuAccelMeas,imuAttRateMeas,RBI,l_imu, pbar0,xbar0);
-	updateRBIfromGamma(RBI,xbar0.middleRows(6,3));
+	RBI=updateRBIfromGamma(RBI,xbar0.middleRows(6,3));
 	xbar0.middleRows(6,3)=Eigen::Vector3d::Zero();
 	spkfMeasure6(xbar0, pbar0, Rk,internal_rI, internal_rC,RBI,l_cg2p,l_s2p,Pimu,xState);
 	//spkfMeasure6(xbar0, pbar0, Rk,internal_rI, internal_rC,RBI,l_cg2p,l_s2p,Pimu,xState);

@@ -12,12 +12,14 @@
 #include <gbx_ros_bridge_msgs/ImuConfig.h>
 #include <gbx_ros_bridge_msgs/NavigationSolution.h>
 #include <gbx_ros_bridge_msgs/ObservablesMeasurementTime.h>
-#include <stdint.h>
+//#include <stdio.h>
+//#include <stdint.h>
 #include <cmath>
 
 #include "filter.h"
 #include "filterTW.h"
-#include "classes.h"
+//#include "classes.h" //Included in filterImu.hpp
+#include "filterImu.hpp"
 
 namespace gpsimu_odom
 {
@@ -102,12 +104,15 @@ class estimationNode
   ros::Publisher mocap_pub_;
   ros::Publisher internalPosePub_;
   std::string child_frame_id_;
+  gpsImu imuFilter;
+  imuMeas lastImuMeas;
+
   tf2_ros::TransformBroadcaster tf_broadcaster_;
   Eigen::Vector3d baseECEF_vector, baseENU_vector, WRW0_ecef, arenaRefCenter,
       internal_rI, internal_rC, internal_rImu, rRefImu, n_err, imuAccelMeas,
       imuAttRateMeas, l_imu, l_s2p, l_cg2p;
 
-  Eigen::Matrix3d Recef2enu, Rwrw, R_G2wrw, RBI;
+  Eigen::Matrix3d Recef2enu, Rwrw, R_G2wrw, Recef2wrw, RBI;
   Eigen::Matrix<double,21,3> rCtildeCalib, rBCalib;
   Eigen::Matrix<double,15,1> xState, xStatePrev;
   //Pimu, Fimu are P, F matrices of EKF.  P_report is special IMU component used in mocap for publisher.
