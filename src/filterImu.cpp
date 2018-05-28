@@ -6,53 +6,47 @@ namespace gpsimu_odom
 {
 void gpsImu::runUKF(const imuMeas &imu, const gpsMeas &gps)
 {
-	//std::cout<<"RUNNING CF, dt="<<dt0<<std::endl;
-	Eigen::Matrix<double,15,15> pbar0;
-	Eigen::Matrix<double,15,1>  xbar0;
 	double timu, tgps, dt0;
 	Eigen::Vector3d imuAccelMeas, imuAttRateMeas, internal_rI, internal_rC;
-	imu.getMeas(timu,imuAccelMeas,imuAttRateMeas); //Store current imu time in dt
+	imu.getMeas(timu, imuAccelMeas, imuAttRateMeas); //Store current imu time in dt
 	gps.getMeas(tgps, internal_rI, internal_rC);
 	dt0=tgps-timu; //subtract off t0 to get actual dt
-	//Qk12_ ~ (QK/dt_est)*dt
+	
+	//KF
+	Eigen::Matrix<double,15,1> x0;
+	Eigen::Matrix<double,15,15> P0;
+	spkfPropagate15(xState_, Pimu_, (Qk12dividedByDt_*dt0), dt0, imuAccelMeas, imuAttRateMeas, RBI_, Limu_, x0, P0);
+	updateRBIfromGamma(RBI_,x0);
+	spkfMeasure6(x0, P0, Rk_, internal_rI, internal_rC, RBI_, Lcg2p_, Ls2p_, xState_, Pimu_);
+	updateRBIfromGamma(RBI_,xState_);
 
-	std::cout << "dt: " << dt0 << std::endl;
-	spkfPropagate15(xState_,Pimu_,(Qk12dividedByDt_*dt0),dt0,imuAccelMeas,imuAttRateMeas,RBI_,Limu_, pbar0,xbar0);
-	RBI_=updateRBIfromGamma(RBI_,xbar0.middleRows(6,3));
-	xbar0.middleRows(6,3)=Eigen::Vector3d::Zero();
-	spkfMeasure6(xbar0, pbar0, Rk_,internal_rI, internal_rC,RBI_,Lcg2p_,Ls2p_,Pimu_,xState_);
-	//spkfMeasure6(xbar0, pbar0, Rk_,internal_rI, internal_rC,RBI_,Lcg2p_,Ls2p_,Pimu_,xState_);
-	//std::cout << "xState_ after measurement" << std::endl << xState_ <<std::endl;
 
 	//Test bias saturation to avoid OOM errors
-	saturateBiases(maxBa_,maxBg_);
+	//saturateBiases(maxBa_,maxBg_);
 
 	RBI_=orthonormalize(RBI_);
-
-	//std::cout << "after measurement:" <<std::endl<<xState_ <<std::endl;
 
 	return;
 }
 
 
-void gpsImu::runUKFpropagateOnly(const double lastTime, const imuMeas &imu)
+void gpsImu::runUKFpropagateOnly(const double tPrev, const imuMeas &imu)
 {
-	//std::cout<<"RUNNING CF, dt="<<dt0<<std::endl;
-	Eigen::Matrix<double,15,15> pbar0;
-	Eigen::Matrix<double,15,1>  xbar0;
 	double timu, dt0;
 	Eigen::Vector3d imuAccelMeas, imuAttRateMeas;
 	imu.getMeas(timu,imuAccelMeas,imuAttRateMeas); 
-	dt0=lastTime-timu; //subtract off t0 to get actual dt
+	dt0=timu-tPrev; //subtract off t0 to get actual dt
 	//Qk12_ ~ (QK/dt_est)*dt
-	spkfPropagate15(xState_,Pimu_,(Qk12dividedByDt_*dt0),dt0,imuAccelMeas,imuAttRateMeas,RBI_,Limu_, pbar0,xbar0);
-	RBI_=updateRBIfromGamma(RBI_,xbar0.middleRows(6,3));
-	xbar0.middleRows(6,3)=Eigen::Vector3d::Zero();
-	xState_ = xbar0;
-	Pimu_ = pbar0;
+	Eigen::Matrix<double,15,1> x0;
+	Eigen::Matrix<double,15,15> P0;
+	spkfPropagate15(xState_,Pimu_,(Qk12dividedByDt_*dt0),dt0,imuAccelMeas,imuAttRateMeas,RBI_,Limu_, x0, P0);
+	updateRBIfromGamma(RBI_,x0);
+
+	xState_=x0;
+	Pimu_=P0;
 
 	//Test bias saturation to avoid OOM errors
-	saturateBiases(maxBa_,maxBg_);
+	//saturateBiases(maxBa_,maxBg_);
 
 	RBI_=orthonormalize(RBI_);
 
@@ -114,9 +108,8 @@ Eigen::Matrix<double,6,1> gpsImu::hnonlinSPKF(const Eigen::Matrix<double,15,1> &
 //Hardcoding matrix sizes instead of doing dynamic resizing to preserve speed
 void gpsImu::spkfPropagate15(const Eigen::Matrix<double,15,1> &x0, const Eigen::Matrix<double,15,15> &P0,
 	const Eigen::Matrix<double,12,12> &Q, const double dt, const Eigen::Vector3d &fB0, const Eigen::Vector3d &wB0,
-	const Eigen::Matrix3d &RR, const Eigen::Vector3d &lAB, Eigen::Matrix<double,15,15> &Pkp1, Eigen::Matrix<double,15,1> &xkp1)
+	const Eigen::Matrix3d &RR, const Eigen::Vector3d &lAB, Eigen::Matrix<double,15,1> &xkp1, Eigen::Matrix<double,15,15> &Pkp1)
 {
-	//std::cout << "dt: " << dt <<std::endl;
 	static const double epsilon(1.0e-8);
 	static const double alpha(1.0e-3);
 	static const double beta(2.0);
@@ -186,7 +179,7 @@ void gpsImu::spkfPropagate15(const Eigen::Matrix<double,15,1> &x0, const Eigen::
 void gpsImu::spkfMeasure6(const Eigen::Matrix<double,15,1> &x0, const Eigen::Matrix<double,15,15> &P0,
 	const Eigen::Matrix<double,6,6> &R, const Eigen::Vector3d &rI_measurement, const Eigen::Vector3d &rCu_measurement,
 	const Eigen::Matrix3d &RR, const Eigen::Vector3d &lcg2p, const Eigen::Vector3d &ls2p,
-	Eigen::Matrix<double,15,15> &Pkp1, Eigen::Matrix<double,15,1> &xkp1)
+	Eigen::Matrix<double,15,1> &xkp1, Eigen::Matrix<double,15,15> &Pkp1)
 {
 	static const double epsilon(1.0e-8);
 	static const double alpha(1.0e-3);
@@ -284,6 +277,14 @@ Eigen::Matrix3d gpsImu::updateRBIfromGamma(const Eigen::Matrix3d &R0, const Eige
     //return (Eigen::Matrix3d::Identity()+hatmat(gamma))*R0;
     //return (rotMatFromEuler(gamma))*R0;
     return (euler2dcm312(gamma))*R0;
+}
+
+
+//rotate by hatmat(gammavec) to new RBI_
+void gpsImu::updateRBIfromGamma(Eigen::Matrix3d &R0, Eigen::Matrix<double,15,1> &x0)
+{
+	R0=euler2dcm312(x0.middleRows(6,3))*R0;
+	x0.middleRows(6,3)=Eigen::Vector3d::Zero();
 }
 
 

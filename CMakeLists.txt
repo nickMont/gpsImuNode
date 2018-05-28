@@ -23,7 +23,7 @@ include_directories(
   ${Eigen_INCLUDE_DIRS}
 )
 
-add_executable(gpsImu_node src/estimationNode.cpp src/filter.cpp src/filterTW.cpp src/compFilterMatrices.cpp src/gpsCallbacks.cpp src/filterImu.cpp)
+add_executable(gpsImu_node src/estimationNode.cpp src/filter.cpp src/filterTW.cpp src/gpsCallbacks.cpp src/filterImu.cpp src/mathHelperFunctions.cpp)
 add_dependencies(gpsImu_node gbx_ros_bridge_msgs_gencpp)
 add_dependencies(gpsImu_node gbx_ros_bridge_msgs)
 target_link_libraries(gpsImu_node ${catkin_LIBRARIES})
